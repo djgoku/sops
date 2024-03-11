@@ -1,0 +1,40 @@
+* sops: SOPS encrypt and decrypt without leaving the editor.
+
+To learn more about Secret OPerationS: [[https://github.com/getsops/sops]]
+
+** Installation
+
+By enabling ~global-sops-mode~, ~sops-mode~ will try to enable itself
+automatically when we enter a SOPS encrypted file. When you see that
+~sops~ is enabled you can use ~sops-edit-file~ to decrypt the
+file. After modifications have been made you can save with
+~sops-save-file~ or discard modifications with ~sops-cancel~.
+
+~elpaca~ + ~use-package~
+#+begin_example
+(defun sops-setup-env ()
+  "Set environment variable for SOPS"
+  (setenv "AWS_PROFILE" "production"))
+
+(use-package sops
+  :ensure t
+  :bind (("C-c C-c" . sops-save-file)
+         ("C-c C-k" . sops-cancel)
+         ("C-c C-d" . sops-edit-file))
+  :init
+  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env)
+  (global-sops-mode 1))
+#+end_example
+
+** Custom Variables
+
+| Variable                         | Description                                                     |
+|----------------------------------+-----------------------------------------------------------------|
+| sops-executable                  | Path to SOPS executable. Defaults to ~sops~                     |
+| sops-decrypt-args                | SOPS decrypt arguments. Defaults to ~`("-d")~                   |
+| sops-before-encrypt-decrypt-hook | Run function before encrypting or decrypting. Defaults to ~nil~ |
+
+** Future
+
+- Add a variable to auto-decrypt when we enter an encrypted file when `global-sops-mode` is enabled.
+- Create new SOPS encrypted files via ~sops-mode~.
