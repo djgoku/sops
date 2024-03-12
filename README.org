@@ -17,7 +17,7 @@ file. After modifications have been made you can save with
   (setenv "AWS_PROFILE" "production"))
 
 (use-package sops
-  :ensure t
+  :ensure (:type git :host github :repo "djgoku/sops")
   :bind (("C-c C-c" . sops-save-file)
          ("C-c C-k" . sops-cancel)
          ("C-c C-d" . sops-edit-file))
