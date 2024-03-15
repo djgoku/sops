@@ -38,3 +38,4 @@ file. After modifications have been made you can save with
 
 - Add a variable to auto-decrypt when we enter an encrypted file when `global-sops-mode` is enabled.
 - Create new SOPS encrypted files via ~sops-mode~.
+- If we fail to encrypt (sops < 3.9), we need to revert changes to original-file to encrypted state and switch back to decrypted buffer.
