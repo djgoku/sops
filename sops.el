@@ -1,4 +1,4 @@
-;;; sops.el --- SOPS encrypt and decrypt without leaving the editor. -*- lexical-binding: t; -*-
+;;; sops.el --- SOPS encrypt and decrypt without leaving the editor -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023 Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 
@@ -35,7 +35,7 @@
 (defgroup sops nil "SOPS encrypt and decrypt without leaving the editor.." :prefix 'sops :group 'convenience)
 
 (defcustom sops-executable "sops"
-  "sops executable"
+  "Path to the sops executable."
   :group 'sops
   :type 'string)
 
@@ -84,6 +84,7 @@
 
 ;;;###autoload
 (defun turn-on-sops-mode ()
+  "Turn on sops mode globally."
   (if (and global-sops-mode (executable-find sops-executable))
       (add-hook 'after-change-major-mode-hook #'sops-mode)
     (remove-hook 'after-change-major-mode-hook #'sops-mode)))
@@ -175,7 +176,7 @@
         t)))
 
 (defun sops--clean-up-buffers (filename)
-  "Clean up buffers we might have created."
+  "Clean up buffers we might have created using FILENAME as the suffix."
   (dolist (elt '("*sops-mode-process*-%s" "*sops-mode-process-error*-%s"))
     (let ((formatted-elt (format elt filename)))
       (if (get-buffer formatted-elt)
