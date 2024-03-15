@@ -80,10 +80,10 @@
                                       ))))
 
 ;;;###autoload
-(define-globalized-minor-mode global-sops-mode sops-mode turn-on-sops-mode)
+(define-globalized-minor-mode global-sops-mode sops-mode sops-turn-on-sops-mode)
 
 ;;;###autoload
-(defun turn-on-sops-mode ()
+(defun sops-turn-on-sops-mode ()
   "Turn on sops mode globally."
   (if (and global-sops-mode (executable-find sops-executable))
       (add-hook 'after-change-major-mode-hook #'sops-mode)
