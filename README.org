@@ -14,7 +14,12 @@ file. After modifications have been made you can save with
 #+begin_example
 (defun sops-setup-env ()
   "Set environment variable for SOPS"
-  (setenv "AWS_PROFILE" "production"))
+  (when (string-match "arn:aws:kms.*:\\([[:digit:]]+\\):" (buffer-string))
+    (pcase (match-string 1 (buffer-string))
+      ("111111111111" (setenv "AWS_PROFILE" "dev"))
+      ("222222222222" (setenv "AWS_PROFILE" "stage"))
+      ("333333333333" (setenv "AWS_PROFILE" "prod"))
+      (x (message "No matching AWS Profile for %s" x)))))
 
 (use-package sops
   :ensure (:type git :host github :repo "djgoku/sops")
@@ -39,3 +44,4 @@ file. After modifications have been made you can save with
 - Add a variable to auto-decrypt when we enter an encrypted file when `global-sops-mode` is enabled.
 - Create new SOPS encrypted files via ~sops-mode~.
 - If we fail to encrypt (sops < 3.9), we need to revert changes to original-file to encrypted state and switch back to decrypted buffer.
+  - We should also show the error buffer too.
