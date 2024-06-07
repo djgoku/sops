@@ -4,7 +4,7 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience, programming
-;; Version: 0.1.0
+;; Version: 0.1.1
 ;; Package-Requires: ((emacs "28.1") (s "1.13.0"))
 ;; Homepage: http://github.com/djgoku/sops
 ;; Keywords: convenience files tools sops encrypt decrypt
@@ -104,7 +104,9 @@
                (sops-process-buffer (get-buffer-create (format "*sops-mode-process*-%s" original-file-name)))
                (buffer-string (buffer-string))
                (buffer-name (buffer-name))
-               (original-major-mode (with-current-buffer (current-buffer) major-mode)))
+               (original-major-mode (with-current-buffer (current-buffer) major-mode))
+               (sops-save-file-key-description (key-description (where-is-internal 'sops-save-file nil t)))
+               (sops-cancel-key-description (key-description (where-is-internal 'sops-cancel nil t))))
           (if (eq (apply #'call-process sops-executable nil `(,sops-process-buffer ,temp-file-error) nil (append sops-decrypt-args (list original-file-name))) 0)
               (progn
                 (switch-to-buffer sops-process-buffer)
@@ -116,7 +118,7 @@
                             sops--original-buffer-name buffer-name)
                 (sops-mode 1)
                 (set-buffer-modified-p nil)
-                (message "C-c C-c to save modifications or C-c C-k to cancel modifications"))
+                (message (format "%s to save modifications or %s to cancel modifications" sops-save-file-key-description sops-cancel-key-description)))
             (progn
               (switch-to-buffer sops-process-error-buffer)
               (insert-file-contents temp-file-error)
