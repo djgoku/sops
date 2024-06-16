@@ -187,16 +187,11 @@
 (defun sops--version-check ()
   "Check that sops version is greater than or equal to 3.9."
   (with-temp-buffer
-    (if (eq (call-process sops-executable nil t nil "--version") 0)
-        (progn
-          (let ((major-minor-version (s-split "\\."(cadr (s-split " " (buffer-string))))))
-            (if (and (>= (string-to-number (car major-minor-version)) 3) (>= (string-to-number (cadr major-minor-version)) 9))
-                (progn
-                  (setq sops--sops-version-greater-than-equal-to-3-9 t)
-                  t)
-              (progn
-                (setq sops--sops-version-greater-than-equal-to-3-9 nil)
-                nil)))))))
+    (when (zerop (call-process sops-executable nil t nil "--version"))
+      (goto-char (point-min))
+      (re-search-forward (rx (+ digit) (+ (and "." (+ digit)))))
+      (setq sops--sops-version-greater-than-equal-to-3-9
+            (not (string-version-lessp (match-string 0) "3.9.0"))))))
 
 (provide 'sops)
 ;;; sops.el ends here
