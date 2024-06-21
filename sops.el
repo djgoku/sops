@@ -4,8 +4,8 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience, programming
-;; Version: 0.1.1
-;; Package-Requires: ((emacs "28.1") (s "1.13.0"))
+;; Version: 0.1.4
+;; Package-Requires: ((emacs "28.1"))
 ;; Homepage: http://github.com/djgoku/sops
 ;; Keywords: convenience files tools sops encrypt decrypt
 
@@ -29,8 +29,6 @@
 ;; This package allows for easy sops encrypting and decrypting of riles.
 
 ;;; Code:
-
-(require 's)
 
 (defgroup sops nil "SOPS encrypt and decrypt without leaving the editor.." :prefix 'sops :group 'convenience)
 
