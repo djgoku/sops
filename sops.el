@@ -65,8 +65,8 @@
   :group 'sops
   :lighter " sops"
 
-  (if (eq sops--sops-version-greater-than-equal-to-3-9 -1)
-      (sops--version-check))
+  (when (eq sops--sops-version-greater-than-equal-to-3-9 -1)
+    (sops--version-check))
 
   (cond ((not sops-mode) (progn
                            (setq-local sops-mode nil)
@@ -94,109 +94,95 @@
   "Open a sops encrypted file and decrypt it."
   (interactive)
   
-  (if sops-mode
-      (progn
-        (run-hooks 'sops-before-encrypt-decrypt-hook)
-        (sops--clean-up-buffers (buffer-file-name))
-        (let* ((temp-file-error (make-temp-file "sops-mode-error"))
-               (original-file-name (buffer-file-name))
-               (sops-process-error-buffer (get-buffer-create (format "*sops-mode-process-error*-%s" original-file-name)))
-               (sops-process-buffer (get-buffer-create (format "*sops-mode-process*-%s" original-file-name)))
-               (buffer-string (buffer-string))
-               (buffer-name (buffer-name))
-               (original-major-mode (with-current-buffer (current-buffer) major-mode))
-               (sops-save-file-key-description (key-description (where-is-internal 'sops-save-file nil t)))
-               (sops-cancel-key-description (key-description (where-is-internal 'sops-cancel nil t))))
-          (if (eq (apply #'call-process sops-executable nil `(,sops-process-buffer ,temp-file-error) nil (append sops-decrypt-args (list original-file-name))) 0)
-              (progn
-                (switch-to-buffer sops-process-buffer)
-                (funcall original-major-mode)
-                (setq-local sops--original-buffer-file-name original-file-name
-                            sops--status "decrypted"
-                            temp-file-modtime (visited-file-modtime)
-                            sops--original-buffer-string buffer-string
-                            sops--original-buffer-name buffer-name)
-                (sops-mode 1)
-                (set-buffer-modified-p nil)
-                (message (format "%s to save modifications or %s to cancel modifications" sops-save-file-key-description sops-cancel-key-description)))
-            (progn
-              (switch-to-buffer sops-process-error-buffer)
-              (insert-file-contents temp-file-error)
-              (read-only-mode)))))))
+  (when sops-mode
+    (run-hooks 'sops-before-encrypt-decrypt-hook)
+    (sops--clean-up-buffers (buffer-file-name))
+    (let* ((temp-file-error (make-temp-file "sops-mode-error"))
+           (original-file-name (buffer-file-name))
+           (sops-process-error-buffer (get-buffer-create (format "*sops-mode-process-error*-%s" original-file-name)))
+           (sops-process-buffer (get-buffer-create (format "*sops-mode-process*-%s" original-file-name)))
+           (buffer-string (buffer-string))
+           (buffer-name (buffer-name))
+           (original-major-mode (with-current-buffer (current-buffer) major-mode))
+           (sops-save-file-key-description (key-description (where-is-internal 'sops-save-file nil t)))
+           (sops-cancel-key-description (key-description (where-is-internal 'sops-cancel nil t))))
+      (if (eq (apply #'call-process sops-executable nil `(,sops-process-buffer ,temp-file-error) nil (append sops-decrypt-args (list original-file-name))) 0)
+          (progn
+            (switch-to-buffer sops-process-buffer)
+            (funcall original-major-mode)
+            (setq-local sops--original-buffer-file-name original-file-name
+                        sops--status "decrypted"
+                        temp-file-modtime (visited-file-modtime)
+                        sops--original-buffer-string buffer-string
+                        sops--original-buffer-name buffer-name)
+            (sops-mode 1)
+            (set-buffer-modified-p nil)
+            (message (format "%s to save modifications or %s to cancel modifications" sops-save-file-key-description sops-cancel-key-description)))
+        (switch-to-buffer sops-process-error-buffer)
+        (insert-file-contents temp-file-error)
+        (read-only-mode)))))
 
 ;;;###autoload
 (defun sops-save-file ()
   "Save modified sops file and close it."
   (interactive)
-  (if (and (bound-and-true-p sops--status) sops-mode)
-      (progn
-        (if (buffer-modified-p)
-            (progn
-              (let* ((encrypt-exit-code (sops-encrypt-file)))
-                (if (eq encrypt-exit-code 0)
-                    (if (bound-and-true-p sops--sops-version-greater-than-equal-to-3-9)
-                        (let ((encrypted-buffer-contents (buffer-string))
-                              (original-file-name sops--original-buffer-file-name))
-                          (switch-to-buffer sops--original-buffer-name)
-                          (erase-buffer)
-                          (insert encrypted-buffer-contents)
-                          (save-buffer)
-                          (sops--clean-up-buffers original-file-name))
-
-                      (sops--clean-up-buffers (buffer-file-name))))))
-          (progn
-            (message "no changes were made to file, closing buffer")
-            (kill-buffer (get-buffer "*sops-mode-process*"))
-            (erase-buffer)
-            (insert sops--original-buffer-string)
-            (save-buffer))))))
+  (when (and (bound-and-true-p sops--status) sops-mode)
+    (if (buffer-modified-p)
+        (when (zerop (sops-encrypt-file))
+          (if (bound-and-true-p sops--sops-version-greater-than-equal-to-3-9)
+              (let ((encrypted-buffer-contents (buffer-string))
+                    (original-file-name sops--original-buffer-file-name))
+                (switch-to-buffer sops--original-buffer-name)
+                (erase-buffer)
+                (insert encrypted-buffer-contents)
+                (save-buffer)
+                (sops--clean-up-buffers original-file-name))
+            (sops--clean-up-buffers (buffer-file-name))))
+      (message "no changes were made to file, closing buffer")
+      (kill-buffer (get-buffer "*sops-mode-process*"))
+      (erase-buffer)
+      (insert sops--original-buffer-string)
+      (save-buffer))))
 
 (defun sops-encrypt-file ()
   "Sops encrypt data."
   (run-hooks 'sops-before-encrypt-decrypt-hook)
   (if sops--sops-version-greater-than-equal-to-3-9
       (call-process-region (point-min) (point-max) sops-executable t t nil "--filename-override" sops--original-buffer-file-name "--encrypt" "/dev/stdin")
-    (progn
-      (let* ((decrypted-buffer-contents (buffer-string)))
-        (switch-to-buffer sops--original-buffer-name)
-        (erase-buffer)
-        (insert decrypted-buffer-contents)
-        (save-buffer)
-        (call-process sops-executable nil nil nil "-e" "-i" (buffer-file-name))))))
+    (let ((decrypted-buffer-contents (buffer-string)))
+      (switch-to-buffer sops--original-buffer-name)
+      (erase-buffer)
+      (insert decrypted-buffer-contents)
+      (save-buffer)
+      (call-process sops-executable nil nil nil "-e" "-i" (buffer-file-name)))))
 
 (defun sops-cancel ()
   "Cancel saving sops encrypted data."
   (interactive)
-  (if (and (bound-and-true-p sops--status) sops-mode)
-      (sops--clean-up-buffers sops--original-buffer-file-name)))
+  (when (and (bound-and-true-p sops--status) sops-mode)
+    (sops--clean-up-buffers sops--original-buffer-file-name)))
 
 (defun sops--is-sops-file ()
   "Check to see if a file is a sops encrypted file."
   (save-excursion
     (goto-char (point-min))
-    (if (search-forward "ENC[AES256_GCM" nil t 2)
-        t)))
+    (when (search-forward "ENC[AES256_GCM" nil t 2)
+      t)))
 
 (defun sops--clean-up-buffers (filename)
   "Clean up buffers we might have created using FILENAME as the suffix."
   (dolist (elt '("*sops-mode-process*-%s" "*sops-mode-process-error*-%s"))
-    (let ((formatted-elt (format elt filename)))
-      (if (get-buffer formatted-elt)
-          (kill-buffer formatted-elt)))))
+    (when-let (buffer (get-buffer (format elt filename)))
+      (kill-buffer buffer))))
 
 (defun sops--version-check ()
   "Check that sops version is greater than or equal to 3.9."
   (with-temp-buffer
-    (if (eq (call-process sops-executable nil t nil "--version") 0)
-        (progn
-          (let ((major-minor-version (s-split "\\."(cadr (s-split " " (buffer-string))))))
-            (if (and (>= (string-to-number (car major-minor-version)) 3) (>= (string-to-number (cadr major-minor-version)) 9))
-                (progn
-                  (setq sops--sops-version-greater-than-equal-to-3-9 t)
-                  t)
-              (progn
-                (setq sops--sops-version-greater-than-equal-to-3-9 nil)
-                nil)))))))
+    (when (zerop (call-process sops-executable nil t nil "--version"))
+      (goto-char (point-min))
+      (re-search-forward (rx (+ digit) (+ (and "." (+ digit)))))
+      (setq sops--sops-version-greater-than-equal-to-3-9
+            (not (string-version-lessp (match-string 0) "3.9.0"))))))
 
 (provide 'sops)
 ;;; sops.el ends here
