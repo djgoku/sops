@@ -182,7 +182,7 @@
       (goto-char (point-min))
       (re-search-forward (rx (+ digit) (+ (and "." (+ digit)))))
       (setq sops--sops-version-greater-than-equal-to-3-9
-            (not (string-version-lessp (match-string 0) "3.9.0"))))))
+            (not (version< (match-string 0) "3.9.0"))))))
 
 (provide 'sops)
 ;;; sops.el ends here
