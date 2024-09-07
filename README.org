@@ -15,7 +15,7 @@ file. After modifications have been made you can save with
 (defun sops-setup-env ()
   "Set environment variable for SOPS"
   (when (string-match "arn:aws:kms.*:\\([[:digit:]]+\\):" (buffer-string))
-    (pcase (match-string 1 (buffer-string))
+    (pcase (match-string-no-properties 1 (buffer-string))
       ("111111111111" (setenv "AWS_PROFILE" "dev"))
       ("222222222222" (setenv "AWS_PROFILE" "stage"))
       ("333333333333" (setenv "AWS_PROFILE" "prod"))
