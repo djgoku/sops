@@ -26,7 +26,7 @@
 
 ;;; Commentary:
 
-;; This package allows for easy sops encrypting and decrypting of riles.
+;; This package allows for easy sops encrypting and decrypting of files.
 
 ;;; Code:
 
