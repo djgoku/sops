@@ -27,8 +27,8 @@ file. After modifications have been made you can save with
          ("C-c C-k" . sops-cancel)
          ("C-c C-d" . sops-edit-file))
   :init
-  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env)
-  (global-sops-mode 1))
+  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env))
+(add-hook 'after-init-hook 'global-sops-mode)
 #+end_example
 
 ** Custom Variables
