@@ -5,10 +5,12 @@ To learn more about Secret OPerationS: [[https://github.com/getsops/sops]]
 ** Installation
 
 By enabling ~global-sops-mode~, ~sops-mode~ will try to enable itself
-automatically when we enter a SOPS encrypted file. When you see that
-~sops~ is enabled you can use ~sops-edit-file~ to decrypt the
-file. After modifications have been made you can save with
-~sops-save-file~ or discard modifications with ~sops-cancel~.
+automatically when we enter a SOPS encrypted file. When you see that ~sops~ is
+enabled you can use ~sops-edit-file~ to decrypt the file. After modifications
+have been made you can save with ~sops-save-file~ or discard modifications with
+~sops-cancel~. Sops encrypted files will be shown in ~read-only-mode~ to prevent
+the user from accidentally corrupting an encrypted file. This is useful for
+partly encrypted files, where only a single line might be encrypted.
 
 ~elpaca~ + ~use-package~
 #+begin_example
@@ -41,7 +43,9 @@ file. After modifications have been made you can save with
 
 ** Future
 
-- Add a variable to auto-decrypt when we enter an encrypted file when `global-sops-mode` is enabled.
+- Add a variable to auto-decrypt when we enter an encrypted file when
+  ~global-sops-mode~ is enabled.
 - Create new SOPS encrypted files via ~sops-mode~.
-- If we fail to encrypt (sops < 3.9), we need to revert changes to original-file to encrypted state and switch back to decrypted buffer.
+- If we fail to encrypt (sops < 3.9), we need to revert changes to original-file
+  to encrypted state and switch back to decrypted buffer.
   - We should also show the error buffer too.

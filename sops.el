@@ -4,7 +4,7 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience, programming
-;; Version: 0.1.5
+;; Version: 0.1.6
 ;; Package-Requires: ((emacs "28.1"))
 ;; Homepage: http://github.com/djgoku/sops
 ;; Keywords: convenience files tools sops encrypt decrypt
@@ -70,7 +70,7 @@
                            (setq-local sops-mode nil)
                            (setq-local sops--status nil)))
         ((and (bound-and-true-p sops--status) (equal sops--status "decrypted")) (setq-local sops-mode 1))
-        ((sops--is-sops-file) (setq-local sops-mode 1))
+        ((sops--is-sops-file) (setq-local sops-mode 1) (read-only-mode))
         ((not (sops--is-sops-file)) (progn
                                       (setq-local sops-mode nil)
                                       (setq-local sops--status nil)
