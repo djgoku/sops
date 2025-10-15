@@ -39,6 +39,7 @@ partly encrypted files, where only a single line might be encrypted.
 |----------------------------------+-----------------------------------------------------------------|
 | sops-executable                  | Path to SOPS executable. Defaults to ~sops~                     |
 | sops-decrypt-args                | SOPS decrypt arguments. Defaults to ~`("-d")~                   |
+| sops-extra-encrypt-args          | SOPS additional encrypt arguments. Defaults to ~`()~            |
 | sops-before-encrypt-decrypt-hook | Run function before encrypting or decrypting. Defaults to ~nil~ |
 
 ** Future
