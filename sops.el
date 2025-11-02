@@ -43,6 +43,12 @@
   :group 'sops
   :type '(repeat string))
 
+(defcustom sops-extra-encrypt-args
+  `()
+  "Additional encrypt arguments for sops."
+  :group 'sops
+  :type '(repeat string))
+
 (defcustom sops-before-encrypt-decrypt-hook nil
   "Hook run before encrypting or decrypting a sops file."
   :group 'sops
@@ -146,13 +152,13 @@
   "Sops encrypt data."
   (run-hooks 'sops-before-encrypt-decrypt-hook)
   (if sops--sops-version-greater-than-equal-to-3-9
-      (call-process-region (point-min) (point-max) sops-executable t t nil "--filename-override" sops--original-buffer-file-name "--encrypt" "/dev/stdin")
+      (apply 'call-process-region (append (list (point-min) (point-max) sops-executable t t nil "--filename-override" sops--original-buffer-file-name "--encrypt") sops-extra-encrypt-args (list "/dev/stdin")))
     (let ((decrypted-buffer-contents (buffer-string)))
       (switch-to-buffer sops--original-buffer-name)
       (erase-buffer)
       (insert decrypted-buffer-contents)
       (save-buffer)
-      (call-process sops-executable nil nil nil "-e" "-i" (buffer-file-name)))))
+      (apply 'call-process (append (list sops-executable nil nil nil "-e" "-i") sops-extra-encrypt-args (list (buffer-file-name)))))))
 
 (defun sops-cancel ()
   "Cancel saving sops encrypted data."
