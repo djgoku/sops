@@ -4,7 +4,7 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience, programming
-;; Version: 0.1.6
+;; Version: 0.1.7
 ;; Package-Requires: ((emacs "28.1"))
 ;; Homepage: http://github.com/djgoku/sops
 ;; Keywords: convenience files tools sops encrypt decrypt
@@ -137,9 +137,11 @@
               (let ((encrypted-buffer-contents (buffer-string))
                     (original-file-name sops--original-buffer-file-name))
                 (switch-to-buffer sops--original-buffer-name)
+                (read-only-mode -1)
                 (erase-buffer)
                 (insert encrypted-buffer-contents)
                 (save-buffer)
+                (read-only-mode)
                 (sops--clean-up-buffers original-file-name))
             (sops--clean-up-buffers (buffer-file-name))))
       (message "no changes were made to file, closing buffer")
