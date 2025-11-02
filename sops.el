@@ -4,7 +4,7 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience, programming
-;; Version: 0.1.6
+;; Version: 0.1.8
 ;; Package-Requires: ((emacs "28.1"))
 ;; Homepage: http://github.com/djgoku/sops
 ;; Keywords: convenience files tools sops encrypt decrypt
