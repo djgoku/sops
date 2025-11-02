@@ -42,6 +42,20 @@ partly encrypted files, where only a single line might be encrypted.
 | sops-extra-encrypt-args          | SOPS additional encrypt arguments. Defaults to ~`()~            |
 | sops-before-encrypt-decrypt-hook | Run function before encrypting or decrypting. Defaults to ~nil~ |
 
+** Age SSH
+
+#+BEGIN_QUOTE
+Use ~sops-extra-encrypt-args~ to create a two-element list, like
+~’(“-a” “<ssh-key-1>,<ssh-key-2>”)~. The first element is the age
+switch ~-a~, and the second element is a single string separating SSH
+keys with commas if using multiple.
+#+END_QUOTE
+
+With the addition of ~sops-extra-encrypt-args~, Age SSH and likely
+other uses are possible. It’s also a convenience feature for age.
+
+https://github.com/FiloSottile/age?tab=readme-ov-file#ssh-keys
+https://github.com/getsops/sops/blob/775335db220e812431a0e7d159ff816e3399348c/README.rst?plain=1#L236
 ** Future
 
 - Add a variable to auto-decrypt when we enter an encrypted file when
