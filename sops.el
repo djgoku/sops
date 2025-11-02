@@ -158,7 +158,7 @@
       (erase-buffer)
       (insert decrypted-buffer-contents)
       (save-buffer)
-      (apply 'call-process (append (list sops-executable nil nil nil "-e" "-i") sops-extra-encrypt-args (list buffer-file-name))))))
+      (apply 'call-process (append (list sops-executable nil nil nil "-e" "-i") sops-extra-encrypt-args (list (buffer-file-name)))))))
 
 (defun sops-cancel ()
   "Cancel saving sops encrypted data."
