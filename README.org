@@ -29,8 +29,8 @@ partly encrypted files, where only a single line might be encrypted.
          ("C-c C-k" . sops-cancel)
          ("C-c C-d" . sops-edit-file))
   :init
-  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env)
-  (global-sops-mode 1))
+  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env))
+(add-hook 'after-init-hook 'global-sops-mode)
 #+end_example
 
 ** Custom Variables
