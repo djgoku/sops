@@ -4,7 +4,7 @@
 
 ;; Compute fixture directory from this file's location
 (defvar sops-test--directory
-  (file-name-directory (or load-file-name buffer-file-name))
+  (file-name-directory (or load-file-name buffer-file-name default-directory))
   "Directory containing this test file.")
 
 (defvar sops-test--fixtures
@@ -22,24 +22,32 @@
     (when (re-search-forward "^# public key: \\(age1[^[:space:]]+\\)" nil t)
       (match-string 1))))
 
-(defun sops-test--shell-encrypt (input override-name &optional input-type)
+(defun sops-test--encrypt-string (input override-name &optional input-type)
   "Run sops encrypt on INPUT (string), return ciphertext as string.
 OVERRIDE-NAME is passed via --filename-override and must match the
 fixture's `.sops.yaml' creation_rules path_regex (i.e. include `.enc.').
-INPUT-TYPE is optional."
+INPUT-TYPE is optional.  Returns binary bytes; the caller should write
+with `coding-system-for-write' bound to `no-conversion' to round-trip
+losslessly.  `default-directory' must contain the relevant `.sops.yaml'."
   (with-temp-buffer
     (let* ((output-buf (current-buffer))
+           (stderr-file (make-temp-file "sops-stderr-"))
            (args (append (list "encrypt" "--filename-override" override-name)
                          (when input-type (list "--input-type" input-type))
-                         (list "/dev/stdin")))
-           (exit (with-temp-buffer
-                   (insert input)
-                   (apply #'call-process-region (point-min) (point-max)
-                          "sops" nil output-buf nil args))))
-      (unless (zerop exit)
-        (error "sops encrypt failed for %s (exit %d): %s"
-               override-name exit (with-current-buffer output-buf (buffer-string))))
-      (buffer-string))))
+                         (list "/dev/stdin"))))
+      (unwind-protect
+          (let ((exit (with-temp-buffer
+                        (insert input)
+                        (apply #'call-process-region (point-min) (point-max)
+                               "sops" nil (list output-buf stderr-file) nil args))))
+            (unless (zerop exit)
+              (error "sops encrypt failed for %s (exit %s): %s"
+                     override-name exit
+                     (with-temp-buffer
+                       (insert-file-contents stderr-file)
+                       (buffer-string))))
+            (buffer-string))
+        (when (file-exists-p stderr-file) (delete-file stderr-file))))))
 
 (defun sops-test--ensure-fixtures ()
   "Generate test fixtures in `sops-test--fixtures' if not already done.
@@ -76,19 +84,19 @@ plus a plaintext negative-test sample."
                          (let ((coding-system-for-write 'no-conversion))
                            (insert content))))))
           (funcall write (expand-file-name "secrets.enc.yaml" sops-test--fixtures)
-                   (sops-test--shell-encrypt
+                   (sops-test--encrypt-string
                     "database_password: super-secret-yaml\napi_key: abc-123-xyz\n"
                     "secrets.enc.yaml"))
           (funcall write (expand-file-name "config.enc.json" sops-test--fixtures)
-                   (sops-test--shell-encrypt
+                   (sops-test--encrypt-string
                     "{\"db_password\": \"super-secret-json\", \"api_key\": \"json-abc-123\"}\n"
                     "config.enc.json"))
           (funcall write (expand-file-name "vars.enc.env" sops-test--fixtures)
-                   (sops-test--shell-encrypt
+                   (sops-test--encrypt-string
                     "DB_PASSWORD=super-secret-env\nAPI_KEY=env-abc-123\n"
                     "vars.enc.env"))
           (funcall write (expand-file-name "notes.enc.txt" sops-test--fixtures)
-                   (sops-test--shell-encrypt
+                   (sops-test--encrypt-string
                     "secret_token: txt-fixture-token\n"
                     "notes.enc.txt" "yaml"))
           (funcall write (expand-file-name "plain.yaml" sops-test--fixtures)
