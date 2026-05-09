@@ -1,6 +1,7 @@
 ;;; sops-test.el --- Tests for sops.el v2  -*- lexical-binding: t; -*-
 (require 'ert)
 (require 'cl-lib)
+(require 'sops)
 
 ;; Compute fixture directory from this file's location
 (defvar sops-test--directory
@@ -107,6 +108,18 @@ plus a plaintext negative-test sample."
   "Return absolute path to fixture NAME, generating fixtures on first call."
   (sops-test--ensure-fixtures)
   (expand-file-name name sops-test--fixtures))
+
+(ert-deftest sops-test--state-struct-defaults ()
+  "A new sops-state has nil status and nil last-error."
+  (let ((s (sops-state-create)))
+    (should (eq nil (sops-state-status s)))
+    (should (eq nil (sops-state-last-error s)))))
+
+(ert-deftest sops-test--state-struct-fields ()
+  "A sops-state can be created with explicit fields."
+  (let ((s (sops-state-create :status 'decrypted :last-error "boom")))
+    (should (eq 'decrypted (sops-state-status s)))
+    (should (equal "boom" (sops-state-last-error s)))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
