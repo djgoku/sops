@@ -1,0 +1,9 @@
+**.direnv/
+**.elc
+***autoloads.el
+**trash
+**~
+**.~undo-tree
+/doc/*.info
+mise.local.toml
+test/test-fixtures/

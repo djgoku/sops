@@ -1,0 +1,104 @@
+;;; sops-test.el --- Tests for sops.el v2  -*- lexical-binding: t; -*-
+(require 'ert)
+(require 'cl-lib)
+
+;; Compute fixture directory from this file's location
+(defvar sops-test--directory
+  (file-name-directory (or load-file-name buffer-file-name))
+  "Directory containing this test file.")
+
+(defvar sops-test--fixtures
+  (expand-file-name "test-fixtures" sops-test--directory)
+  "Directory where ephemeral test fixtures live.  Untracked by git.")
+
+(defvar sops-test--fixtures-ready nil
+  "Non-nil after `sops-test--ensure-fixtures' has run successfully this session.")
+
+(defun sops-test--read-public-key (key-file)
+  "Extract the age public key (age1...) from KEY-FILE."
+  (with-temp-buffer
+    (insert-file-contents key-file)
+    (goto-char (point-min))
+    (when (re-search-forward "^# public key: \\(age1[^[:space:]]+\\)" nil t)
+      (match-string 1))))
+
+(defun sops-test--shell-encrypt (input override-name &optional input-type)
+  "Run sops encrypt on INPUT (string), return ciphertext as string.
+OVERRIDE-NAME is passed via --filename-override and must match the
+fixture's `.sops.yaml' creation_rules path_regex (i.e. include `.enc.').
+INPUT-TYPE is optional."
+  (with-temp-buffer
+    (let* ((output-buf (current-buffer))
+           (args (append (list "encrypt" "--filename-override" override-name)
+                         (when input-type (list "--input-type" input-type))
+                         (list "/dev/stdin")))
+           (exit (with-temp-buffer
+                   (insert input)
+                   (apply #'call-process-region (point-min) (point-max)
+                          "sops" nil output-buf nil args))))
+      (unless (zerop exit)
+        (error "sops encrypt failed for %s (exit %d): %s"
+               override-name exit (with-current-buffer output-buf (buffer-string))))
+      (buffer-string))))
+
+(defun sops-test--ensure-fixtures ()
+  "Generate test fixtures in `sops-test--fixtures' if not already done.
+Idempotent within a session via `sops-test--fixtures-ready'.
+Generates: age key, .sops.yaml, encrypted YAML/JSON/ENV/TXT samples,
+plus a plaintext negative-test sample."
+  (unless sops-test--fixtures-ready
+    (make-directory sops-test--fixtures t)
+    (let* ((key-file  (expand-file-name "age-test-key.txt" sops-test--fixtures))
+           (sops-yaml (expand-file-name ".sops.yaml"       sops-test--fixtures)))
+      ;; 1. Generate age key (requires age-keygen on PATH).
+      (unless (file-exists-p key-file)
+        (let ((exit (call-process "age-keygen" nil nil nil "-o" key-file)))
+          (unless (zerop exit) (error "age-keygen failed (exit %d)" exit)))
+        (set-file-modes key-file #o600))
+      ;; 2. Create .sops.yaml pointing at the public key.  The path_regex
+      ;;    matches the .enc. naming convention used by the fixtures so
+      ;;    plain.yaml stays plaintext.
+      (let ((pub (sops-test--read-public-key key-file)))
+        (unless pub (error "Could not extract public key from %s" key-file))
+        (with-temp-file sops-yaml
+          (insert "creation_rules:\n"
+                  "  - path_regex: \\.enc\\.(yaml|json|env|txt)$\n"
+                  "    age: " pub "\n")))
+      ;; 3. Encrypt fixtures.  Each --filename-override matches the on-disk
+      ;;    name (and therefore the .sops.yaml path_regex) so sops can find
+      ;;    the creation rule.  Set SOPS_AGE_KEY_FILE explicitly so the
+      ;;    helper works without mise's env active.
+      (let ((process-environment
+             (cons (concat "SOPS_AGE_KEY_FILE=" key-file) process-environment))
+            (default-directory sops-test--fixtures))
+        (let ((write (lambda (path content)
+                       (with-temp-file path
+                         (let ((coding-system-for-write 'no-conversion))
+                           (insert content))))))
+          (funcall write (expand-file-name "secrets.enc.yaml" sops-test--fixtures)
+                   (sops-test--shell-encrypt
+                    "database_password: super-secret-yaml\napi_key: abc-123-xyz\n"
+                    "secrets.enc.yaml"))
+          (funcall write (expand-file-name "config.enc.json" sops-test--fixtures)
+                   (sops-test--shell-encrypt
+                    "{\"db_password\": \"super-secret-json\", \"api_key\": \"json-abc-123\"}\n"
+                    "config.enc.json"))
+          (funcall write (expand-file-name "vars.enc.env" sops-test--fixtures)
+                   (sops-test--shell-encrypt
+                    "DB_PASSWORD=super-secret-env\nAPI_KEY=env-abc-123\n"
+                    "vars.enc.env"))
+          (funcall write (expand-file-name "notes.enc.txt" sops-test--fixtures)
+                   (sops-test--shell-encrypt
+                    "secret_token: txt-fixture-token\n"
+                    "notes.enc.txt" "yaml"))
+          (funcall write (expand-file-name "plain.yaml" sops-test--fixtures)
+                   "not: a-sops-file\njust: plain-yaml\n"))))
+    (setq sops-test--fixtures-ready t)))
+
+(defun sops-test--fixture (name)
+  "Return absolute path to fixture NAME, generating fixtures on first call."
+  (sops-test--ensure-fixtures)
+  (expand-file-name name sops-test--fixtures))
+
+(provide 'sops-test)
+;;; sops-test.el ends here
