@@ -1,0 +1,7 @@
+[tools]
+age = "latest"
+sops = "latest"
+"aqua:emacs-eask/cli" = "latest"
+
+[env]
+SOPS_AGE_KEY_FILE = "{{config_root}}/test/test-fixtures/age-test-key.txt"
