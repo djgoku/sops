@@ -133,6 +133,8 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
           ;; watches stderr for known prompts and responds via process-send-string;
           ;; that's the architectural fix.
           (while (not done)
+            ;; 100 ms timeout balances UI responsiveness for fast commands
+            ;; (--version, filestatus) against CPU spin for slow ones (decrypt).
             (accept-process-output proc 0.1))
           (list :exit-status (process-exit-status proc)
                 :stdout (with-current-buffer stdout-buf (buffer-string))

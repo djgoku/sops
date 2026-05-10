@@ -208,9 +208,13 @@ Locks the discriminator against future `truthiness' loosening."
     (should (string-match-p "^sops" (plist-get result :stdout)))))
 
 (ert-deftest sops-test--run-bad-args-failure ()
-  "sops--run with garbage returns non-zero exit and stderr content."
+  "sops--run with garbage returns non-zero exit and captured stderr.
+Asserts stderr is non-empty so the :stderr pipe wiring is exercised on
+the failure path; doesn't pin the message text (sops's wording can shift
+between versions)."
   (let ((result (sops--run '("nonexistent-subcommand"))))
-    (should-not (eq 0 (plist-get result :exit-status)))))
+    (should-not (eq 0 (plist-get result :exit-status)))
+    (should (> (length (plist-get result :stderr)) 0))))
 
 (ert-deftest sops-test--run-with-input ()
   "sops--run can pipe input via :input."
@@ -223,6 +227,12 @@ Locks the discriminator against future `truthiness' loosening."
   "stderr does not contain sops update-check noise."
   (let ((result (sops--run '("--version"))))
     (should-not (string-match-p "new version of sops" (plist-get result :stderr)))))
+
+(ert-deftest sops-test--run-missing-executable-errors ()
+  "An absolute path to a nonexistent binary signals an error from make-process.
+Locks the contract that sops--run does not silently swallow exec failures."
+  (let ((sops-executable "/no/such/sops"))
+    (should-error (sops--run '("--version")))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
