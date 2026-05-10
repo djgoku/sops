@@ -181,5 +181,28 @@ only treat t as a positive encrypted signal."
     (and (eq 0 (plist-get result :exit-status))
          (sops--parse-filestatus (plist-get result :stdout)))))
 
+(defun sops--popup-error (file args exit-status stderr)
+  "Pop up *sops-error: FILE* with details of a sops invocation failure.
+ARGS is the list passed to sops, EXIT-STATUS the exit code, STDERR the captured stderr."
+  (let* ((buf-name (format "*sops-error: %s*" file))
+         (buf (get-buffer-create buf-name)))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "sops %s\n" (mapconcat #'identity args " "))
+                (format "Exit status: %d\n" exit-status)
+                (format "Time: %s\n" (format-time-string "%FT%T%z"))
+                "─── stderr ───\n"
+                stderr
+                "\n─── recovery ───\n"
+                "Fix the issue above (e.g., re-auth, plug in yubikey,"
+                " set AWS_PROFILE), then in the original buffer:\n"
+                "  C-x C-s            retry save (encrypt errors)\n"
+                "  M-x revert-buffer  retry decrypt (decrypt errors)\n"))
+      (read-only-mode 1)
+      (local-set-key (kbd "q") #'quit-window))
+    (display-buffer buf)
+    buf))
+
 (provide 'sops)
 ;;; sops.el ends here

@@ -293,5 +293,35 @@ Locks the contract that sops--run does not silently swallow exec failures."
   "Returns nil for non-existent file (sops errors, we degrade gracefully)."
   (should (eq nil (sops--filestatus "/tmp/nonexistent-sops-test-file.yaml"))))
 
+(ert-deftest sops-test--popup-error-creates-buffer ()
+  "Creates *sops-error: FILE* buffer with stderr content."
+  (let* ((file "/tmp/example.enc.yaml")
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (sops--popup-error file '("decrypt" "/tmp/example.enc.yaml")
+                       1 "FAILED: bad credentials\n")
+    (let ((buf (get-buffer buf-name)))
+      (should buf)
+      (with-current-buffer buf
+        (should (string-match-p "sops decrypt" (buffer-string)))
+        (should (string-match-p "Exit status: 1" (buffer-string)))
+        (should (string-match-p "FAILED: bad credentials" (buffer-string)))
+        (should (string-match-p "recovery" (buffer-string)))
+        (should (string-match-p "C-x C-s" (buffer-string)))
+        (should buffer-read-only))
+      (kill-buffer buf))))
+
+(ert-deftest sops-test--popup-error-reuses-buffer ()
+  "Subsequent failures for same file reuse the buffer (erase + rewrite)."
+  (let* ((file "/tmp/x.yaml")
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (sops--popup-error file '("decrypt") 1 "first error\n")
+    (sops--popup-error file '("decrypt") 1 "second error\n")
+    (with-current-buffer buf-name
+      (should (string-match-p "second error" (buffer-string)))
+      (should-not (string-match-p "first error" (buffer-string))))
+    (kill-buffer buf-name)))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
