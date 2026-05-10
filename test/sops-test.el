@@ -327,5 +327,44 @@ lookup."
       (should-not (string-match-p "first error" (buffer-string))))
     (kill-buffer buf-name)))
 
+(ert-deftest sops-test--decrypt-buffer-success ()
+  "Decrypts a fixture into the buffer; returns t."
+  (let ((file (sops-test--fixture "secrets.enc.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (should (eq t (sops--decrypt-buffer)))
+      (should (string-match-p "database_password: super-secret-yaml"
+                              (buffer-string)))
+      (should-not (buffer-modified-p)))))
+
+(ert-deftest sops-test--decrypt-buffer-failure-pops-error ()
+  "Bad auth: returns nil, buffer unchanged, error buffer popped."
+  (let* ((file (sops-test--fixture "secrets.enc.yaml"))
+         (orig (with-temp-buffer (insert-file-contents file) (buffer-string)))
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (let ((process-environment
+             (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent-key" process-environment)))
+        (should (eq nil (sops--decrypt-buffer))))
+      (should (equal orig (buffer-string))))
+    (should (get-buffer buf-name))
+    (kill-buffer buf-name)))
+
+(ert-deftest sops-test--decrypt-buffer-runs-before-decrypt-hook ()
+  "sops-before-decrypt-hook runs before decrypt with buffer-file-name set."
+  (let* ((file (sops-test--fixture "secrets.enc.yaml"))
+         (called nil)
+         (sops-before-decrypt-hook
+          (list (lambda () (setq called buffer-file-name)))))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (sops--decrypt-buffer)
+      (should (equal file called)))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here

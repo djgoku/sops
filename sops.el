@@ -207,5 +207,52 @@ displayed buffer."
     (display-buffer buf)
     buf))
 
+(defcustom sops-decrypt-args '("decrypt")
+  "Arguments to sops for decrypt (the file path is appended)."
+  :type '(repeat string)
+  :group 'sops)
+
+(defcustom sops-extra-encrypt-args nil
+  "Additional arguments inserted before the trailing /dev/stdin in encrypt.
+Example for age SSH: \\='(\"-a\" \"<ssh-key>\")."
+  :type '(repeat string)
+  :group 'sops)
+
+(defcustom sops-before-decrypt-hook nil
+  "Hook run before each sops decrypt invocation.
+Buffer-local context including `buffer-file-name' is set.
+Use to set `AWS_PROFILE', age key paths, etc."
+  :type 'hook
+  :group 'sops)
+
+(defcustom sops-before-encrypt-hook nil
+  "Hook run before each sops encrypt invocation.
+Same context as `sops-before-decrypt-hook'."
+  :type 'hook
+  :group 'sops)
+
+(defun sops--decrypt-buffer ()
+  "Decrypt current buffer's file via sops, replacing buffer contents.
+Return t on success, nil on failure (popping an error buffer).
+Caller must have set `buffer-file-name' to the encrypted file path."
+  (run-hooks 'sops-before-decrypt-hook)
+  (let* ((file buffer-file-name)
+         (input-type (sops--input-type-for file))
+         (args (append sops-decrypt-args
+                       (when input-type (list "--input-type" input-type))
+                       (list file)))
+         (result (sops--run args))
+         (exit (plist-get result :exit-status)))
+    (if (eq 0 exit)
+        (progn
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert (plist-get result :stdout)))
+          (set-buffer-modified-p nil)
+          (normal-mode)  ; re-detect major mode based on now-decrypted content
+          t)
+      (sops--popup-error file args exit (plist-get result :stderr))
+      nil)))
+
 (provide 'sops)
 ;;; sops.el ends here
