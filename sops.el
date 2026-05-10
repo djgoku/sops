@@ -320,9 +320,23 @@ Returns t when save was handled (skipping normal write); signals user-error on f
   "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
 Widens before erasing so a narrowed buffer doesn't corrupt itself with
 mixed encrypted + plaintext content (parallels the narrowing defense
-in `sops--encrypt-and-write')."
+in `sops--encrypt-and-write').
+
+Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
+
+  1. After the revert, `verify-visited-file-modtime' must return t
+     so the next keystroke doesn't re-fire the \"FILE has changed on
+     disk\" prompt.
+
+  2. `erase-buffer' triggers Emacs's lock-file path which calls
+     `ask-user-about-supersession-threat' if the modtime is stale.
+     In batch mode that errors out (\"Cannot resolve conflict in
+     batch mode\"); interactively it would re-fire the supersession
+     prompt mid-revert.  Updating the recorded modtime first
+     suppresses the check because the buffer now \"agrees\" with disk."
   (save-restriction
     (widen)
+    (set-visited-file-modtime)
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert-file-contents buffer-file-name)))
@@ -344,12 +358,27 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
     (setq-local make-backup-files nil)
     (setq-local buffer-auto-save-file-name nil)
     (setq-local revert-buffer-function #'sops--revert-buffer)
-    (add-hook 'write-contents-functions #'sops--write-contents-function nil t))
+    (add-hook 'write-contents-functions #'sops--write-contents-function nil t)
+    ;; External writes (magit discard, git checkout, sops -e from CLI) update
+    ;; the file behind our back.  auto-revert-mode polls the modtime and
+    ;; calls `revert-buffer-function' (= `sops--revert-buffer') when it
+    ;; changes -- so the user sees the new ciphertext re-decrypted instead
+    ;; of a stale buffer + the "really edit?" prompt.
+    ;;
+    ;; Disable file-notify (kqueue/inotify) and rely on polling: file-notify
+    ;; fires asynchronously inside `accept-process-output', which is exactly
+    ;; the blocking-loop primitive `sops--run' uses to wait for sops -- so a
+    ;; notify-driven revert during an active sops subprocess could recurse
+    ;; into another `sops--run' nested inside the first.  Polling fires only
+    ;; on its own timer (default 5 s), well outside any single subprocess.
+    (setq-local auto-revert-use-notify nil)
+    (auto-revert-mode 1))
    (t
     (when (buffer-modified-p)
       (setq sops-mode 1)  ; revert the toggle
       (user-error
        "sops: buffer modified; revert-buffer first or use M-x read-only-mode"))
+    (auto-revert-mode -1)
     (kill-local-variable 'make-backup-files)
     (kill-local-variable 'buffer-auto-save-file-name)
     (kill-local-variable 'revert-buffer-function)
@@ -372,7 +401,9 @@ function checks for that surviving flag and re-installs the rest."
     (setq-local buffer-auto-save-file-name nil)
     (setq-local revert-buffer-function #'sops--revert-buffer)
     (add-hook 'write-contents-functions
-              #'sops--write-contents-function nil t)))
+              #'sops--write-contents-function nil t)
+    (setq-local auto-revert-use-notify nil)
+    (auto-revert-mode 1)))
 
 (add-hook 'after-change-major-mode-hook
           #'sops--restore-after-major-mode-change)
