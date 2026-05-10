@@ -1,66 +1,131 @@
-* sops: SOPS encrypt and decrypt without leaving the editor.
+* sops: Edit SOPS-encrypted files transparently in Emacs
 
-To learn more about Secret OPerationS: [[https://github.com/getsops/sops]]
+[[https://github.com/getsops/sops][SOPS]] (Secret OPerationS) is a tool for managing secrets — encrypting values
+inside YAML/JSON/ENV/INI/binary files while leaving keys readable. This
+package lets you open a SOPS-encrypted file with =find-file= and edit it
+like any other buffer; encryption happens transparently on save.
 
 ** Installation
 
-By enabling ~global-sops-mode~, ~sops-mode~ will try to enable itself
-automatically when we enter a SOPS encrypted file. When you see that ~sops~ is
-enabled you can use ~sops-edit-file~ to decrypt the file. After modifications
-have been made you can save with ~sops-save-file~ or discard modifications with
-~sops-cancel~. Sops encrypted files will be shown in ~read-only-mode~ to prevent
-the user from accidentally corrupting an encrypted file. This is useful for
-partly encrypted files, where only a single line might be encrypted.
-
-~elpaca~ + ~use-package~
-#+begin_example
-(defun sops-setup-env ()
-  "Set environment variable for SOPS"
-  (when (string-match "arn:aws:kms.*:\\([[:digit:]]+\\):" (buffer-string))
-    (pcase (match-string-no-properties 1 (buffer-string))
-      ("111111111111" (setenv "AWS_PROFILE" "dev"))
-      ("222222222222" (setenv "AWS_PROFILE" "stage"))
-      ("333333333333" (setenv "AWS_PROFILE" "prod"))
-      (x (message "No matching AWS Profile for %s" x)))))
-
+#+begin_src elisp
 (use-package sops
   :ensure (:type git :host github :repo "djgoku/sops")
-  :bind (("C-c C-c" . sops-save-file)
-         ("C-c C-k" . sops-cancel)
-         ("C-c C-d" . sops-edit-file))
   :init
-  (setq sops-before-encrypt-decrypt-hook 'sops-setup-env)
   (global-sops-mode 1))
-#+end_example
+#+end_src
 
-** Custom Variables
+That's it. No commands to bind, no special keystrokes.
 
-| Variable                         | Description                                                     |
-|----------------------------------+-----------------------------------------------------------------|
-| sops-executable                  | Path to SOPS executable. Defaults to ~sops~                     |
-| sops-decrypt-args                | SOPS decrypt arguments. Defaults to ~`("-d")~                   |
-| sops-extra-encrypt-args          | SOPS additional encrypt arguments. Defaults to ~`()~            |
-| sops-before-encrypt-decrypt-hook | Run function before encrypting or decrypting. Defaults to ~nil~ |
+Requires =sops= >= 3.9.0 (>= 3.13.0 recommended for inline YAML comment
+preservation).
 
-** Age SSH
+** Usage
 
-#+BEGIN_QUOTE
-Use ~sops-extra-encrypt-args~ to create a two-element list, like
-~’(“-a” “<ssh-key-1>,<ssh-key-2>”)~. The first element is the age
-switch ~-a~, and the second element is a single string separating SSH
-keys with commas if using multiple.
-#+END_QUOTE
+1. Open a sops-encrypted file with =M-x find-file= (or =C-x C-f=). The buffer
+   shows decrypted contents and the =sops= lighter appears in the modeline.
+2. Edit normally.
+3. Save with =C-x C-s=. The file on disk stays encrypted.
 
-With the addition of ~sops-extra-encrypt-args~, Age SSH and likely
-other uses are possible. It’s also a convenience feature for age.
+To create a new encrypted file: see =sops-find-file= in v2.1 (not yet shipped).
 
-https://github.com/FiloSottile/age?tab=readme-ov-file#ssh-keys
-https://github.com/getsops/sops/blob/775335db220e812431a0e7d159ff816e3399348c/README.rst?plain=1#L236
-** Future
+** Configuration
 
-- Add a variable to auto-decrypt when we enter an encrypted file when
-  ~global-sops-mode~ is enabled.
-- Create new SOPS encrypted files via ~sops-mode~.
-- If we fail to encrypt (sops < 3.9), we need to revert changes to original-file
-  to encrypted state and switch back to decrypted buffer.
-  - We should also show the error buffer too.
+| Variable                    | Default        | Purpose                                                                      |
+|-----------------------------+----------------+------------------------------------------------------------------------------|
+| =sops-executable=           | ="sops"=       | Path to sops binary                                                          |
+| =sops-prefilter-regex=      | (see below)    | Files matching trigger filestatus check                                      |
+| =sops-decrypt-args=         | ='("decrypt")= | Args to sops decrypt (file appended)                                         |
+| =sops-extra-encrypt-args=   | =nil=          | Extra args inserted before /dev/stdin in encrypt                             |
+| =sops-input-type-overrides= | =nil=          | Alist of (REGEX . TYPE) for files where extension doesn't tell sops the type |
+
+The default =sops-prefilter-regex= is:
+
+#+begin_src elisp
+"\\.\\(ya?ml\\|json\\|env\\|ini\\|txt\\)\\'"
+#+end_src
+
+It matches =.yaml=, =.yml=, =.json=, =.env=, =.ini=, and =.txt= file
+extensions.  Override with your own regex if your encrypted files use a
+different naming scheme.
+
+** Hooks
+
+- =sops-before-decrypt-hook= — run before each decrypt; use to set =AWS_PROFILE=, age key paths, etc.
+- =sops-before-encrypt-hook= — run before each encrypt; same use.
+- =sops-mode-hook= — standard minor-mode hook.
+
+Example (set =AWS_PROFILE= based on the file's KMS ARN):
+
+#+begin_src elisp
+(defun my/sops-setup-aws-profile ()
+  (when (and buffer-file-name
+             (string-match "arn:aws:kms.*:\\([[:digit:]]+\\):"
+                           (with-temp-buffer
+                             (insert-file-contents buffer-file-name)
+                             (buffer-string))))
+    (pcase (match-string-no-properties 1)
+      ("111111111111" (setenv "AWS_PROFILE" "dev"))
+      ("222222222222" (setenv "AWS_PROFILE" "stage")))))
+
+(add-hook 'sops-before-decrypt-hook #'my/sops-setup-aws-profile)
+(add-hook 'sops-before-encrypt-hook #'my/sops-setup-aws-profile)
+#+end_src
+
+For non-interactive age PIN/passphrase, set =SOPS_AGE_KEY_CMD= in
+=sops-before-decrypt-hook=.
+
+** Migration from v1
+
+v2 is a clean break. If your v1 config used:
+
+#+begin_src elisp
+:bind (("C-c C-c" . sops-save-file)
+       ("C-c C-k" . sops-cancel)
+       ("C-c C-d" . sops-edit-file))
+#+end_src
+
+Remove all of the above. =find-file= and =save-buffer= now do the right
+thing automatically.
+
+If you used =sops-before-encrypt-decrypt-hook=, split it into
+=sops-before-decrypt-hook= and =sops-before-encrypt-hook=.
+
+See =NEWS.org= for the full break list.
+
+** Read-only on encrypted files
+
+If sops fails to decrypt a file (auth issue, missing key, etc.), the buffer
+shows the encrypted contents in =read-only-mode=. The =*sops-error: <file>*=
+buffer shows what went wrong. Fix the auth issue, then =M-x revert-buffer=
+to retry.
+
+** Notes
+
+*** Remote files
+
+v2.0 does not work over TRAMP — the local =sops= binary cannot read
+remote paths. =sops-mode= skips remote files automatically.
+
+*** Plaintext in =git diff= / =magit-status=
+
+Some upstream sops repos ship a =.gitattributes= line like
+=*.yaml diff=sopsdiffer= plus a matching =[diff "sopsdiffer"]= block in
+=.git/config= that runs =sops -d= on each file before diffing.  That
+makes =git diff=, =git log -p=, and =magit-status= show *plaintext*
+for sops-encrypted YAML files.  This is independent of =sops-mode=.
+
+If you want plaintext diffs for your own real-secret repos, you must
+opt into the textconv yourself.  Be deliberate: anything that reads
+the diff (the GitHub web UI if anyone copies the config there, =tig=,
+IDE diff viewers, CI logs) will see plaintext.  =sops-mode= protects
+your buffer and on-disk file; the textconv affects diff rendering and
+is a separate decision.
+
+** Future work
+
+- v2.1: =M-x sops-find-file= — open existing or create new encrypted file
+- v2.2: Interactive prompt handling for age PIN, yubikey, passphrase
+
+** License
+
+GPL-3.0-or-later.
