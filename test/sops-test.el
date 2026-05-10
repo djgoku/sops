@@ -263,5 +263,12 @@ Locks the contract that sops--run does not silently swallow exec failures."
     (should (or (equal "/usr/bin/sops" (car sops--version-cache))
                 (equal "sops" (car sops--version-cache))))))
 
+(ert-deftest sops-test--ensure-version-missing-binary-errors ()
+  "Missing binary signals user-error and does not poison the cache."
+  (setq sops--version-cache nil)
+  (let ((sops-executable "/no/such/sops"))
+    (should-error (sops--ensure-version) :type 'user-error))
+  (should (eq nil sops--version-cache)))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
