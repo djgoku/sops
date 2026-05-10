@@ -121,5 +121,22 @@ plus a plaintext negative-test sample."
     (should (eq 'decrypted (sops-state-status s)))
     (should (equal "boom" (sops-state-last-error s)))))
 
+(ert-deftest sops-test--prefilter-matches-yaml ()
+  "Default prefilter matches yaml/yml/json/env/ini/txt."
+  (dolist (name '("/tmp/x.yaml" "/tmp/x.yml" "/tmp/x.json"
+                  "/tmp/x.env" "/tmp/x.ini" "/tmp/x.txt"))
+    (should (sops--prefilter-p name))))
+
+(ert-deftest sops-test--prefilter-rejects-others ()
+  "Default prefilter rejects non-target extensions."
+  (dolist (name '("/tmp/x.png" "/tmp/x.exe" "/tmp/x.gz" "/tmp/x.gpg" "/tmp/x.el" nil))
+    (should-not (sops--prefilter-p name))))
+
+(ert-deftest sops-test--prefilter-respects-custom-regex ()
+  "Custom sops-prefilter-regex overrides the default."
+  (let ((sops-prefilter-regex "\\.secrets\\'"))
+    (should (sops--prefilter-p "/tmp/x.secrets"))
+    (should-not (sops--prefilter-p "/tmp/x.yaml"))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here

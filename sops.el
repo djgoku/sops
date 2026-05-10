@@ -39,5 +39,21 @@
   status        ; 'decrypted | 'creating
   last-error)   ; nil or string with most recent sops stderr
 
+(defgroup sops nil
+  "Edit SOPS-encrypted files transparently."
+  :group 'convenience
+  :prefix "sops-")
+
+(defcustom sops-prefilter-regex
+  "\\.\\(ya?ml\\|json\\|env\\|ini\\|txt\\)\\'"
+  "Filename regex.  Files matching trigger a `sops filestatus' check on find-file.
+Files not matching are never checked, so their open path is unaffected."
+  :type 'regexp
+  :group 'sops)
+
+(defun sops--prefilter-p (filename)
+  "Return non-nil if FILENAME should be checked by sops filestatus."
+  (and filename (string-match-p sops-prefilter-regex filename)))
+
 (provide 'sops)
 ;;; sops.el ends here
