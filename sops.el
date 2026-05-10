@@ -76,5 +76,14 @@ Pairs in the alist are tried in list order; the first match wins."
     (cdr (cl-find-if (lambda (pair) (string-match-p (car pair) filename))
                      sops-input-type-overrides))))
 
+(defun sops--parse-filestatus (json-string)
+  "Parse JSON-STRING from `sops filestatus'.
+Return t if encrypted, nil otherwise (including parse errors and missing key)."
+  (condition-case nil
+      (let* ((trimmed (string-trim json-string))
+             (parsed (json-parse-string trimmed :object-type 'alist)))
+        (eq t (cdr (assq 'encrypted parsed))))
+    (error nil)))
+
 (provide 'sops)
 ;;; sops.el ends here

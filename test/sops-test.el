@@ -167,5 +167,22 @@ Pin `case-fold-search' so the suite isn't sensitive to runner state."
                                      ("\\.foo\\'" . "second"))))
     (should (equal "first" (sops--input-type-for "/tmp/x.foo")))))
 
+(ert-deftest sops-test--parse-filestatus-encrypted-true ()
+  (should (eq t (sops--parse-filestatus "{\"encrypted\":true}"))))
+
+(ert-deftest sops-test--parse-filestatus-encrypted-false ()
+  (should (eq nil (sops--parse-filestatus "{\"encrypted\":false}"))))
+
+(ert-deftest sops-test--parse-filestatus-malformed ()
+  "Malformed JSON returns nil (defensive)."
+  (should (eq nil (sops--parse-filestatus "not json")))
+  (should (eq nil (sops--parse-filestatus "")))
+  (should (eq nil (sops--parse-filestatus "{}"))))
+
+(ert-deftest sops-test--parse-filestatus-trailing-whitespace ()
+  "Whitespace/newlines around JSON are tolerated."
+  (should (eq t (sops--parse-filestatus "{\"encrypted\":true}\n")))
+  (should (eq t (sops--parse-filestatus "  {\"encrypted\":true}  "))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
