@@ -339,10 +339,16 @@ lookup."
       (should-not (buffer-modified-p)))))
 
 (ert-deftest sops-test--decrypt-buffer-failure-pops-error ()
-  "Bad auth: returns nil, buffer unchanged, error buffer popped."
+  "Bad auth: returns nil, buffer unchanged, error buffer popped, hook still fired.
+The hook firing before sops--run is part of the contract: users set env
+vars in the hook expecting they take effect on every attempt, not only
+on attempts that succeed."
   (let* ((file (sops-test--fixture "secrets.enc.yaml"))
          (orig (with-temp-buffer (insert-file-contents file) (buffer-string)))
-         (buf-name (format "*sops-error: %s*" file)))
+         (buf-name (format "*sops-error: %s*" file))
+         (hook-fired nil)
+         (sops-before-decrypt-hook
+          (list (lambda () (setq hook-fired t)))))
     (when (get-buffer buf-name) (kill-buffer buf-name))
     (with-temp-buffer
       (setq buffer-file-name file)
@@ -351,6 +357,7 @@ lookup."
              (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent-key" process-environment)))
         (should (eq nil (sops--decrypt-buffer))))
       (should (equal orig (buffer-string))))
+    (should hook-fired)
     (should (get-buffer buf-name))
     (kill-buffer buf-name)))
 

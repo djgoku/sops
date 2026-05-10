@@ -220,14 +220,18 @@ Example for age SSH: \\='(\"-a\" \"<ssh-key>\")."
 
 (defcustom sops-before-decrypt-hook nil
   "Hook run before each sops decrypt invocation.
-Buffer-local context including `buffer-file-name' is set.
-Use to set `AWS_PROFILE', age key paths, etc."
+Runs in the buffer being decrypted; `buffer-file-name' is the
+encrypted file's path.  Use to set `AWS_PROFILE', age key paths, etc.
+The hook fires unconditionally before `sops--run', regardless of
+whether the subsequent decrypt succeeds."
   :type 'hook
   :group 'sops)
 
 (defcustom sops-before-encrypt-hook nil
   "Hook run before each sops encrypt invocation.
-Same context as `sops-before-decrypt-hook'."
+Runs in the buffer being encrypted; `buffer-file-name' is the
+target file's path.  Use to set `AWS_PROFILE', age key paths, etc.
+The hook fires unconditionally before `sops--run'."
   :type 'hook
   :group 'sops)
 
@@ -249,7 +253,14 @@ Caller must have set `buffer-file-name' to the encrypted file path."
             (erase-buffer)
             (insert (plist-get result :stdout)))
           (set-buffer-modified-p nil)
-          (normal-mode)  ; re-detect major mode based on now-decrypted content
+          ;; Re-detect major mode against the now-decrypted plaintext, but
+          ;; via `set-auto-mode' (extension/auto-mode-alist only) rather
+          ;; than `normal-mode' which would also process file-local
+          ;; variables and `-*- eval: ... -*-' cookies.  The decrypted
+          ;; content is not from a trusted source -- a third party with
+          ;; write access to the ciphertext could embed malicious
+          ;; cookies that `normal-mode' would honor at decrypt time.
+          (set-auto-mode)
           t)
       (sops--popup-error file args exit (plist-get result :stderr))
       nil)))
