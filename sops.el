@@ -309,10 +309,15 @@ Returns t when save was handled (skipping normal write); signals user-error on f
   (sops--encrypt-and-write))
 
 (defun sops--revert-buffer (&rest _args)
-  "Revert function for sops-mode buffers: re-read encrypted file and decrypt."
-  (let ((inhibit-read-only t))
-    (erase-buffer)
-    (insert-file-contents buffer-file-name))
+  "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
+Widens before erasing so a narrowed buffer doesn't corrupt itself with
+mixed encrypted + plaintext content (parallels the narrowing defense
+in `sops--encrypt-and-write')."
+  (save-restriction
+    (widen)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (insert-file-contents buffer-file-name)))
   (sops--decrypt-buffer)
   (set-buffer-modified-p nil))
 

@@ -540,7 +540,9 @@ specific sops flag being a no-op for encrypt."
       (when (file-exists-p tmp) (delete-file tmp)))))
 
 (ert-deftest sops-test--mode-enable-installs-hooks ()
-  "Enabling sops-mode installs write-contents-functions and suppresses backups."
+  "Enabling sops-mode installs write-contents-functions and suppresses backups.
+Also asserts that `sops--state' is initialized to a `sops-state' struct
+with `status' = `decrypted'."
   (let ((file (sops-test--fixture "secrets.enc.yaml")))
     (with-temp-buffer
       (setq buffer-file-name file)
@@ -551,8 +553,11 @@ specific sops flag being a no-op for encrypt."
       (should (eq nil make-backup-files))
       (should (eq nil buffer-auto-save-file-name))
       (should (eq #'sops--revert-buffer revert-buffer-function))
+      (should (sops-state-p sops--state))
+      (should (eq 'decrypted (sops-state-status sops--state)))
       (sops-mode -1)
-      (should-not (memq #'sops--write-contents-function write-contents-functions)))))
+      (should-not (memq #'sops--write-contents-function write-contents-functions))
+      (should (eq nil sops--state)))))
 
 (ert-deftest sops-test--mode-disable-on-modified-buffer-blocked ()
   "Disabling sops-mode on modified buffer signals user-error."
@@ -630,7 +635,9 @@ backup/auto-save suppression."
       (should (memq #'sops--write-contents-function write-contents-functions))
       (should (eq nil make-backup-files))
       (should (eq nil buffer-auto-save-file-name))
-      (should (eq #'sops--revert-buffer revert-buffer-function)))))
+      (should (eq #'sops--revert-buffer revert-buffer-function))
+      ;; sops--state is also permanent-local, so the struct survives
+      (should (sops-state-p sops--state)))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
