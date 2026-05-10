@@ -730,5 +730,41 @@ buffer-local value, and restore prior state in `unwind-protect'."
           (should-not (memq #'sops--find-file-hook (default-value 'find-file-hook))))
       (if was-on (global-sops-mode 1) (global-sops-mode -1)))))
 
+(ert-deftest sops-test--encrypt-and-write-refreshes-visited-file-modtime ()
+  "After save, `verify-visited-file-modtime' returns t so the user
+doesn't see \"FILE has changed on disk; really edit the buffer?\" on
+the next edit.  Regression test for the v2.0 manual-testing bug
+where `find-file' recorded the encrypted file's modtime and our
+`write-region' replaced the on-disk file without refreshing the
+buffer's recorded modtime."
+  (sops-test--ensure-fixtures)
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-modtime-" sops-test--fixtures)
+               nil ".enc.yaml")))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (let ((buf (find-file-noselect tmp)))
+            (unwind-protect
+                (with-current-buffer buf
+                  (sops--decrypt-buffer)
+                  (sops-mode 1)
+                  ;; First edit + save.
+                  (goto-char (point-max))
+                  (insert "first: edit\n")
+                  (sops--encrypt-and-write)
+                  (should (verify-visited-file-modtime buf))
+                  ;; Second edit + save -- this is what triggered the
+                  ;; original bug since save 1 left the recorded modtime
+                  ;; stale relative to the file we just wrote.
+                  (goto-char (point-max))
+                  (insert "second: edit\n")
+                  (sops--encrypt-and-write)
+                  (should (verify-visited-file-modtime buf)))
+              (with-current-buffer buf (set-buffer-modified-p nil))
+              (kill-buffer buf))))
+      (delete-file tmp))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here

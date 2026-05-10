@@ -272,7 +272,14 @@ Return t on success.  Signals `user-error' on failure (aborts save).
 Reads the full buffer (widened) so a narrowed buffer isn't silently
 truncated on save.  Suppresses backups (`make-backup-files') around
 the write because ciphertext backups accumulate without recovery
-value -- the user can't usefully edit them manually."
+value -- the user can't usefully edit them manually.
+
+After `write-region', refreshes `visited-file-modtime' so Emacs's
+modtime check (used by `verify-visited-file-modtime') matches the
+file we just wrote.  Without this, the next edit triggers a
+\"FILE has changed on disk; really edit the buffer?\" prompt
+because `find-file' recorded the *encrypted* file's modtime and
+our write replaced it."
   (run-hooks 'sops-before-encrypt-hook)
   (let* ((file buffer-file-name)
          (input-type (sops--input-type-for file))
@@ -297,6 +304,7 @@ value -- the user can't usefully edit them manually."
     (let ((coding-system-for-write 'no-conversion)
           (make-backup-files nil))
       (write-region stdout nil file nil 'silent))
+    (set-visited-file-modtime)
     (set-buffer-modified-p nil)
     t))
 
