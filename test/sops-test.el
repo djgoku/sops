@@ -373,5 +373,82 @@ on attempts that succeed."
       (sops--decrypt-buffer)
       (should (equal file called)))))
 
+(ert-deftest sops-test--encrypt-and-write-roundtrip ()
+  "Decrypt → modify → encrypt-and-write → re-decrypt matches modified content.
+The temp file lives inside `sops-test--fixtures' so sops can locate the
+fixture's `.sops.yaml' by walking up from cwd.  `default-directory' is
+set explicitly in each `with-temp-buffer' because `with-temp-buffer'
+doesn't auto-set it the way `find-file' does in production."
+  (sops-test--ensure-fixtures)
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-roundtrip-" sops-test--fixtures)
+               nil ".enc.yaml")))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (goto-char (point-max))
+            (insert "added_line: roundtrip-value\n")
+            (let ((write-result (sops--encrypt-and-write)))
+              (should (eq t write-result))))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (should (string-match-p "added_line: roundtrip-value"
+                                    (buffer-string)))))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--encrypt-and-write-failure-leaves-file-untouched ()
+  "When sops encrypt fails, target file is unchanged."
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file "sops-test-encfail-" nil ".enc.yaml"))
+         (orig nil))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (setq orig (with-temp-buffer (insert-file-contents tmp) (buffer-string)))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (insert "plain content with no .sops.yaml rule for /tmp\n")
+            (let ((process-environment
+                   (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent" process-environment)))
+              (should-error (sops--encrypt-and-write) :type 'user-error)))
+          (should (equal orig (with-temp-buffer
+                                (insert-file-contents tmp)
+                                (buffer-string)))))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--encrypt-and-write-runs-before-encrypt-hook ()
+  "sops-before-encrypt-hook fires before encrypt with buffer-file-name set.
+See `sops-test--encrypt-and-write-roundtrip' for the explanation of why
+the temp file lives in `sops-test--fixtures' and why `default-directory'
+is set explicitly."
+  (sops-test--ensure-fixtures)
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-hook-" sops-test--fixtures)
+               nil ".enc.yaml"))
+         (called nil)
+         (sops-before-encrypt-hook
+          (list (lambda () (setq called buffer-file-name)))))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (sops--encrypt-and-write)
+            (should (equal tmp called))))
+      (delete-file tmp))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here

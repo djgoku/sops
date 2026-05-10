@@ -265,5 +265,32 @@ Caller must have set `buffer-file-name' to the encrypted file path."
       (sops--popup-error file args exit (plist-get result :stderr))
       nil)))
 
+(defun sops--encrypt-and-write ()
+  "Encrypt current buffer via sops and write to `buffer-file-name'.
+Return t on success.  Signals `user-error' on failure (aborts save)."
+  (run-hooks 'sops-before-encrypt-hook)
+  (let* ((file buffer-file-name)
+         (input-type (sops--input-type-for file))
+         (args (append '("encrypt" "--filename-override")
+                       (list file)
+                       (when input-type (list "--input-type" input-type))
+                       sops-extra-encrypt-args
+                       '("/dev/stdin")))
+         (result (sops--run args :input (buffer-substring-no-properties
+                                         (point-min) (point-max))))
+         (exit (plist-get result :exit-status))
+         (stdout (plist-get result :stdout)))
+    (cond
+     ((not (eq 0 exit))
+      (sops--popup-error file args exit (plist-get result :stderr))
+      (user-error "sops encrypt failed (exit %d)" exit))
+     ((zerop (length stdout))
+      (sops--popup-error file args exit "sops: encrypt produced empty output\n")
+      (user-error "sops encrypt produced empty output")))
+    (let ((coding-system-for-write 'no-conversion))
+      (write-region stdout nil file nil 'silent))
+    (set-buffer-modified-p nil)
+    t))
+
 (provide 'sops)
 ;;; sops.el ends here
