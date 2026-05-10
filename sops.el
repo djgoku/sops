@@ -167,7 +167,12 @@ Signals `user-error' if sops is missing or too old.  Caches result."
 
 (defun sops--filestatus (file)
   "Return t if FILE is sops-encrypted, nil otherwise.
-Threads `sops-input-type-overrides' as `--input-type' if matched."
+Threads `sops-input-type-overrides' as `--input-type' if matched.
+
+A nil return means \"not known to be encrypted\" -- sops errored, the
+file is unreadable, the JSON parse failed, or the file is genuinely
+plaintext.  Callers must not treat nil as a positive plaintext signal;
+only treat t as a positive encrypted signal."
   (let* ((input-type (sops--input-type-for file))
          (args (append '("filestatus")
                        (when input-type (list "--input-type" input-type))
