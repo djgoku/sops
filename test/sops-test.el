@@ -555,9 +555,15 @@ with `status' = `decrypted'."
       (should (eq #'sops--revert-buffer revert-buffer-function))
       (should (sops-state-p sops--state))
       (should (eq 'decrypted (sops-state-status sops--state)))
+      (should (eq t apheleia-inhibit))
       (sops-mode -1)
       (should-not (memq #'sops--write-contents-function write-contents-functions))
-      (should (eq nil sops--state)))))
+      (should (eq nil sops--state))
+      ;; `kill-local-variable' restores the global default; the test
+      ;; environment doesn't have apheleia loaded, so the global is unbound
+      ;; -- assert the symbol is no longer buffer-local rather than checking
+      ;; its value.
+      (should-not (local-variable-p 'apheleia-inhibit)))))
 
 (ert-deftest sops-test--mode-disable-on-modified-buffer-blocked ()
   "Disabling sops-mode on modified buffer signals user-error."

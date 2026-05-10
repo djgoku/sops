@@ -372,7 +372,15 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
     ;; into another `sops--run' nested inside the first.  Polling fires only
     ;; on its own timer (default 5 s), well outside any single subprocess.
     (setq-local auto-revert-use-notify nil)
-    (auto-revert-mode 1))
+    (auto-revert-mode 1)
+    ;; Inhibit apheleia (and any future formatters that respect this var
+    ;; convention).  Two reasons: (1) apheleia's before-save formatter runs
+    ;; before our `write-contents-functions' hook and can hang the save flow
+    ;; before sops is even reached; (2) reformatting decrypted plaintext
+    ;; before encrypt would change the ciphertext on every save, producing
+    ;; meaningless `git diff' churn even on no-op edits.  apheleia documents
+    ;; `apheleia-inhibit' as its buffer-local opt-out.
+    (setq-local apheleia-inhibit t))
    (t
     (when (buffer-modified-p)
       (setq sops-mode 1)  ; revert the toggle
@@ -382,6 +390,7 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
     (kill-local-variable 'make-backup-files)
     (kill-local-variable 'buffer-auto-save-file-name)
     (kill-local-variable 'revert-buffer-function)
+    (kill-local-variable 'apheleia-inhibit)
     (remove-hook 'write-contents-functions #'sops--write-contents-function t)
     (setq sops--state nil))))
 
@@ -403,7 +412,8 @@ function checks for that surviving flag and re-installs the rest."
     (add-hook 'write-contents-functions
               #'sops--write-contents-function nil t)
     (setq-local auto-revert-use-notify nil)
-    (auto-revert-mode 1)))
+    (auto-revert-mode 1)
+    (setq-local apheleia-inhibit t)))
 
 (add-hook 'after-change-major-mode-hook
           #'sops--restore-after-major-mode-change)
