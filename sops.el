@@ -300,5 +300,69 @@ value -- the user can't usefully edit them manually."
     (set-buffer-modified-p nil)
     t))
 
+(defvar-local sops--state nil
+  "An `sops-state' struct for the current buffer, or nil if sops-mode is off.")
+
+(defun sops--write-contents-function ()
+  "Hook function for `write-contents-functions'.
+Returns t when save was handled (skipping normal write); signals user-error on fail."
+  (sops--encrypt-and-write))
+
+(defun sops--revert-buffer (&rest _args)
+  "Revert function for sops-mode buffers: re-read encrypted file and decrypt."
+  (let ((inhibit-read-only t))
+    (erase-buffer)
+    (insert-file-contents buffer-file-name))
+  (sops--decrypt-buffer)
+  (set-buffer-modified-p nil))
+
+;;;###autoload
+(define-minor-mode sops-mode
+  "Edit the current SOPS-encrypted file transparently.
+Decryption happens at find-file; encryption happens at save-buffer.
+Plaintext never reaches disk (backups and auto-save are suppressed)."
+  :init-value nil
+  :lighter " sops"
+  :group 'sops
+  (cond
+   (sops-mode
+    (unless sops--state
+      (setq sops--state (sops-state-create :status 'decrypted)))
+    (setq-local make-backup-files nil)
+    (setq-local buffer-auto-save-file-name nil)
+    (setq-local revert-buffer-function #'sops--revert-buffer)
+    (add-hook 'write-contents-functions #'sops--write-contents-function nil t))
+   (t
+    (when (buffer-modified-p)
+      (setq sops-mode 1)  ; revert the toggle
+      (user-error
+       "sops: buffer modified; revert-buffer first or use M-x read-only-mode"))
+    (kill-local-variable 'make-backup-files)
+    (kill-local-variable 'buffer-auto-save-file-name)
+    (kill-local-variable 'revert-buffer-function)
+    (remove-hook 'write-contents-functions #'sops--write-contents-function t)
+    (setq sops--state nil))))
+
+;; Survive `kill-all-local-variables' (which fires whenever the user changes
+;; major mode).  Without this, our protections evaporate and a subsequent
+;; save would write plaintext to disk.
+(put 'sops-mode 'permanent-local t)
+(put 'sops--state 'permanent-local t)
+
+(defun sops--restore-after-major-mode-change ()
+  "Re-install sops-mode buffer protections after a major-mode change.
+`kill-all-local-variables' wipes our hook entries and buffer-local var
+settings, but `sops-mode' itself is permanent-local and survives.  This
+function checks for that surviving flag and re-installs the rest."
+  (when sops-mode
+    (setq-local make-backup-files nil)
+    (setq-local buffer-auto-save-file-name nil)
+    (setq-local revert-buffer-function #'sops--revert-buffer)
+    (add-hook 'write-contents-functions
+              #'sops--write-contents-function nil t)))
+
+(add-hook 'after-change-major-mode-hook
+          #'sops--restore-after-major-mode-change)
+
 (provide 'sops)
 ;;; sops.el ends here

@@ -539,5 +539,98 @@ specific sops flag being a no-op for encrypt."
             (should (< stub-pos stdin-pos))))
       (when (file-exists-p tmp) (delete-file tmp)))))
 
+(ert-deftest sops-test--mode-enable-installs-hooks ()
+  "Enabling sops-mode installs write-contents-functions and suppresses backups."
+  (let ((file (sops-test--fixture "secrets.enc.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (sops--decrypt-buffer)
+      (sops-mode 1)
+      (should (memq #'sops--write-contents-function write-contents-functions))
+      (should (eq nil make-backup-files))
+      (should (eq nil buffer-auto-save-file-name))
+      (should (eq #'sops--revert-buffer revert-buffer-function))
+      (sops-mode -1)
+      (should-not (memq #'sops--write-contents-function write-contents-functions)))))
+
+(ert-deftest sops-test--mode-disable-on-modified-buffer-blocked ()
+  "Disabling sops-mode on modified buffer signals user-error."
+  (let ((file (sops-test--fixture "secrets.enc.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (sops--decrypt-buffer)
+      (sops-mode 1)
+      (insert "modification")
+      (should (buffer-modified-p))
+      (should-error (sops-mode -1) :type 'user-error))))
+
+(ert-deftest sops-test--save-buffer-encrypts ()
+  "save-buffer in sops-mode triggers encrypt-and-write."
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-save-" sops-test--fixtures)
+               nil ".enc.yaml")))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (sops-mode 1)
+            (goto-char (point-max))
+            (insert "save_test: saved\n")
+            (let ((coding-system-for-write 'no-conversion))
+              (save-buffer)))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (should (string-match-p "save_test: saved" (buffer-string)))))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--revert-buffer-redecrypts ()
+  "After modify, revert-buffer restores original decrypted content."
+  (let ((file (sops-test--fixture "secrets.enc.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (setq default-directory (file-name-directory file))
+      (insert-file-contents file)
+      (sops--decrypt-buffer)
+      (sops-mode 1)
+      (let ((orig (buffer-string)))
+        (goto-char (point-max))
+        (insert "transient")
+        (revert-buffer t t)
+        (should (equal orig (buffer-string)))))))
+
+(ert-deftest sops-test--mode-survives-major-mode-change ()
+  "Changing major mode preserves sops-mode and re-installs protections.
+This is the regression test for the plaintext-leak failure mode where
+`kill-all-local-variables' wipes our write-contents-function and the
+backup/auto-save suppression."
+  (let ((file (sops-test--fixture "secrets.enc.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (sops--decrypt-buffer)
+      (sops-mode 1)
+      (should sops-mode)
+      (should (memq #'sops--write-contents-function write-contents-functions))
+      ;; Switch major mode (simulates user running M-x conf-mode etc.)
+      (text-mode)
+      ;; sops-mode is permanent-local, so the value survives
+      (should sops-mode)
+      ;; The hook entry was wiped by kill-all-local-variables but
+      ;; after-change-major-mode-hook re-installed it
+      (should (memq #'sops--write-contents-function write-contents-functions))
+      (should (eq nil make-backup-files))
+      (should (eq nil buffer-auto-save-file-name))
+      (should (eq #'sops--revert-buffer revert-buffer-function)))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
