@@ -294,21 +294,25 @@ Locks the contract that sops--run does not silently swallow exec failures."
   (should (eq nil (sops--filestatus "/tmp/nonexistent-sops-test-file.yaml"))))
 
 (ert-deftest sops-test--popup-error-creates-buffer ()
-  "Creates *sops-error: FILE* buffer with stderr content."
+  "Creates *sops-error: FILE* buffer with stderr content; returns the buffer.
+Captures the function's return value so a future regression that returns
+nil (or the wrong buffer) is caught here, not just by the get-buffer
+lookup."
   (let* ((file "/tmp/example.enc.yaml")
          (buf-name (format "*sops-error: %s*" file)))
     (when (get-buffer buf-name) (kill-buffer buf-name))
-    (sops--popup-error file '("decrypt" "/tmp/example.enc.yaml")
-                       1 "FAILED: bad credentials\n")
-    (let ((buf (get-buffer buf-name)))
+    (let ((buf (sops--popup-error file '("decrypt" "/tmp/example.enc.yaml")
+                                  1 "FAILED: bad credentials\n")))
       (should buf)
+      (should (eq buf (get-buffer buf-name)))
       (with-current-buffer buf
         (should (string-match-p "sops decrypt" (buffer-string)))
         (should (string-match-p "Exit status: 1" (buffer-string)))
         (should (string-match-p "FAILED: bad credentials" (buffer-string)))
         (should (string-match-p "recovery" (buffer-string)))
         (should (string-match-p "C-x C-s" (buffer-string)))
-        (should buffer-read-only))
+        (should buffer-read-only)
+        (should-not (buffer-modified-p)))
       (kill-buffer buf))))
 
 (ert-deftest sops-test--popup-error-reuses-buffer ()

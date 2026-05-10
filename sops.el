@@ -183,7 +183,9 @@ only treat t as a positive encrypted signal."
 
 (defun sops--popup-error (file args exit-status stderr)
   "Pop up *sops-error: FILE* with details of a sops invocation failure.
-ARGS is the list passed to sops, EXIT-STATUS the exit code, STDERR the captured stderr."
+ARGS is the list passed to sops, EXIT-STATUS the exit code (integer),
+STDERR the captured stderr (string; pass \"\" if absent).  Returns the
+displayed buffer."
   (let* ((buf-name (format "*sops-error: %s*" file))
          (buf (get-buffer-create buf-name)))
     (with-current-buffer buf
@@ -199,6 +201,7 @@ ARGS is the list passed to sops, EXIT-STATUS the exit code, STDERR the captured 
                 " set AWS_PROFILE), then in the original buffer:\n"
                 "  C-x C-s            retry save (encrypt errors)\n"
                 "  M-x revert-buffer  retry decrypt (decrypt errors)\n"))
+      (set-buffer-modified-p nil)
       (read-only-mode 1)
       (local-set-key (kbd "q") #'quit-window))
     (display-buffer buf)
