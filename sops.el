@@ -78,7 +78,11 @@ Pairs in the alist are tried in list order; the first match wins."
 
 (defun sops--parse-filestatus (json-string)
   "Parse JSON-STRING from `sops filestatus'.
-Return t if encrypted, nil otherwise (including parse errors and missing key)."
+Return t if and only if the parsed object contains the boolean true at
+key `encrypted'.  Any other shape -- nil input, non-string input, parse
+error, missing key, non-boolean value -- collapses to nil so callers can
+treat a nil return as `not known to be encrypted' rather than `definitely
+plaintext'.  Leading/trailing whitespace in JSON-STRING is trimmed."
   (condition-case nil
       (let* ((trimmed (string-trim json-string))
              (parsed (json-parse-string trimmed :object-type 'alist)))

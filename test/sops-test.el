@@ -168,9 +168,11 @@ Pin `case-fold-search' so the suite isn't sensitive to runner state."
     (should (equal "first" (sops--input-type-for "/tmp/x.foo")))))
 
 (ert-deftest sops-test--parse-filestatus-encrypted-true ()
+  "Strict JSON `{\"encrypted\":true}' returns t."
   (should (eq t (sops--parse-filestatus "{\"encrypted\":true}"))))
 
 (ert-deftest sops-test--parse-filestatus-encrypted-false ()
+  "Strict JSON `{\"encrypted\":false}' returns nil."
   (should (eq nil (sops--parse-filestatus "{\"encrypted\":false}"))))
 
 (ert-deftest sops-test--parse-filestatus-malformed ()
@@ -183,6 +185,21 @@ Pin `case-fold-search' so the suite isn't sensitive to runner state."
   "Whitespace/newlines around JSON are tolerated."
   (should (eq t (sops--parse-filestatus "{\"encrypted\":true}\n")))
   (should (eq t (sops--parse-filestatus "  {\"encrypted\":true}  "))))
+
+(ert-deftest sops-test--parse-filestatus-missing-key ()
+  "JSON without an `encrypted' key returns nil even if other keys are true."
+  (should (eq nil (sops--parse-filestatus "{\"other\":true}"))))
+
+(ert-deftest sops-test--parse-filestatus-non-boolean-value ()
+  "Strict-t check: any non-boolean value at `encrypted' returns nil.
+Locks the discriminator against future `truthiness' loosening."
+  (should (eq nil (sops--parse-filestatus "{\"encrypted\":\"true\"}")))
+  (should (eq nil (sops--parse-filestatus "{\"encrypted\":1}")))
+  (should (eq nil (sops--parse-filestatus "{\"encrypted\":[1,2]}"))))
+
+(ert-deftest sops-test--parse-filestatus-non-string-input ()
+  "Non-string input returns nil rather than erroring."
+  (should (eq nil (sops--parse-filestatus nil))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
