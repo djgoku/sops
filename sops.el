@@ -144,5 +144,26 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
       (when (buffer-live-p stdout-buf) (kill-buffer stdout-buf))
       (when (buffer-live-p stderr-buf) (kill-buffer stderr-buf)))))
 
+(defvar sops--version-cache nil
+  "Cons of (PATH . VERSION-STRING) cached after first successful sops --version.
+Recomputed when `sops-executable' changes or path is otherwise different.")
+
+(defun sops--ensure-version ()
+  "Verify sops binary exists and is >= 3.9.0.  Return version string.
+Signals `user-error' if sops is missing or too old.  Caches result."
+  (when (or (null sops--version-cache)
+            (not (equal (car sops--version-cache) sops-executable)))
+    (unless (executable-find sops-executable)
+      (user-error "sops: executable not found: %s" sops-executable))
+    (let* ((result (sops--run '("--version")))
+           (out (plist-get result :stdout))
+           (version (when (string-match "[0-9]+\\.[0-9]+\\.[0-9]+" out)
+                      (match-string 0 out))))
+      (unless (and version (version<= "3.9.0" version))
+        (user-error "sops: requires >= 3.9.0, found %s"
+                    (or version "unknown")))
+      (setq sops--version-cache (cons sops-executable version))))
+  (cdr sops--version-cache))
+
 (provide 'sops)
 ;;; sops.el ends here

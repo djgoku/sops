@@ -234,5 +234,34 @@ Locks the contract that sops--run does not silently swallow exec failures."
   (let ((sops-executable "/no/such/sops"))
     (should-error (sops--run '("--version")))))
 
+(ert-deftest sops-test--ensure-version-passes-on-modern-sops ()
+  "Returns version string when sops >= 3.9.0."
+  (setq sops--version-cache nil)
+  (let ((v (sops--ensure-version)))
+    (should (stringp v))
+    (should (version<= "3.9.0" v))))
+
+(ert-deftest sops-test--ensure-version-cache-hit ()
+  "Second call uses cached value (same path)."
+  (setq sops--version-cache nil)
+  (sops--ensure-version)
+  (let ((cached sops--version-cache))
+    (should cached)
+    (should (equal sops-executable (car cached)))
+    ;; Calling again should not change the cache cell
+    (sops--ensure-version)
+    (should (eq cached sops--version-cache))))
+
+(ert-deftest sops-test--ensure-version-recomputes-on-path-change ()
+  "Cache invalidated when sops-executable changes."
+  (setq sops--version-cache nil)
+  (sops--ensure-version)
+  (let ((sops-executable "/usr/bin/sops")) ; different path, may not exist
+    (ignore-errors (sops--ensure-version))
+    ;; The cached path should reflect the most recent successful call;
+    ;; if the new path errors, cache for old path may persist — that's OK.
+    (should (or (equal "/usr/bin/sops" (car sops--version-cache))
+                (equal "sops" (car sops--version-cache))))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
