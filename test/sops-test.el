@@ -826,5 +826,31 @@ buffer's recorded modtime."
               (kill-buffer buf))))
       (delete-file tmp))))
 
+(ert-deftest sops-test--migration-warns-on-v1-hook ()
+  "Warns when v1 sops-before-encrypt-decrypt-hook is non-nil."
+  (let* ((sops-before-encrypt-decrypt-hook (list #'ignore))
+         (warnings nil)
+         (display-warning-fn
+          (lambda (type msg &rest _) (push (cons type msg) warnings))))
+    (cl-letf (((symbol-function 'display-warning) display-warning-fn))
+      (sops--check-v1-config))
+    (should (cl-find-if (lambda (w)
+                          (and (eq (car w) 'sops)
+                               (string-match-p "before-encrypt-decrypt-hook"
+                                               (cdr w))))
+                        warnings))))
+
+(ert-deftest sops-test--migration-no-warn-when-unset ()
+  "Does not warn when v1 vars are nil or unbound."
+  (let ((warnings nil)
+        (display-warning-fn
+         (lambda (type msg &rest _) (push (cons type msg) warnings))))
+    (cl-letf (((symbol-function 'display-warning) display-warning-fn))
+      (when (boundp 'sops-before-encrypt-decrypt-hook)
+        (let ((sops-before-encrypt-decrypt-hook nil))
+          (sops--check-v1-config)))
+      (sops--check-v1-config))
+    (should (eq nil warnings))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
