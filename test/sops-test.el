@@ -142,5 +142,22 @@ Pin `case-fold-search' so the suite isn't sensitive to runner state."
     (should (sops--prefilter-p "/tmp/x.secrets"))
     (should-not (sops--prefilter-p "/tmp/x.yaml"))))
 
+(ert-deftest sops-test--input-type-for-no-override ()
+  "Returns nil when no override matches."
+  (let ((sops-input-type-overrides nil))
+    (should (eq nil (sops--input-type-for "/tmp/x.yaml")))))
+
+(ert-deftest sops-test--input-type-for-with-override ()
+  "Returns the matching type string."
+  (let ((sops-input-type-overrides '((".secrets\\'" . "yaml")
+                                     (".envrc\\'" . "dotenv"))))
+    (should (equal "yaml" (sops--input-type-for "/tmp/x.secrets")))
+    (should (equal "dotenv" (sops--input-type-for "/tmp/.envrc")))
+    (should (eq nil (sops--input-type-for "/tmp/x.yaml")))))
+
+(ert-deftest sops-test--input-type-for-nil-filename ()
+  "Returns nil for nil filename without erroring."
+  (should (eq nil (sops--input-type-for nil))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here

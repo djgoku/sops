@@ -55,5 +55,20 @@ Files not matching are never checked, so their open path is unaffected."
   "Return non-nil if FILENAME should be checked by sops filestatus."
   (and filename (string-match-p sops-prefilter-regex filename)))
 
+(defcustom sops-input-type-overrides nil
+  "Alist of (REGEX . INPUT-TYPE) for files whose extension sops can't infer.
+When BUFFER-FILE-NAME matches REGEX, INPUT-TYPE is passed as
+`--input-type INPUT-TYPE' to sops filestatus, decrypt, and encrypt.
+
+Example: (setq sops-input-type-overrides \\='((\".secrets\\\\'\" . \"yaml\")))"
+  :type '(alist :key-type regexp :value-type string)
+  :group 'sops)
+
+(defun sops--input-type-for (filename)
+  "Return input-type string for FILENAME from `sops-input-type-overrides', or nil."
+  (when filename
+    (cdr (cl-find-if (lambda (pair) (string-match-p (car pair) filename))
+                     sops-input-type-overrides))))
+
 (provide 'sops)
 ;;; sops.el ends here
