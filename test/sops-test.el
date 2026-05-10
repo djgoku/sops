@@ -641,7 +641,8 @@ backup/auto-save suppression."
 
 (ert-deftest sops-test--find-file-hook-decrypts-encrypted ()
   "find-file-hook on encrypted file decrypts and enables sops-mode."
-  (let ((buf (find-file-noselect (sops-test--fixture "secrets.enc.yaml"))))
+  (let* ((find-file-hook nil)  ; isolate from any user/global hooks
+         (buf (find-file-noselect (sops-test--fixture "secrets.enc.yaml"))))
     (unwind-protect
         (with-current-buffer buf
           (sops--find-file-hook)
@@ -652,7 +653,8 @@ backup/auto-save suppression."
 
 (ert-deftest sops-test--find-file-hook-skips-plaintext ()
   "find-file-hook on plaintext yaml does nothing."
-  (let ((buf (find-file-noselect (sops-test--fixture "plain.yaml"))))
+  (let* ((find-file-hook nil)
+         (buf (find-file-noselect (sops-test--fixture "plain.yaml"))))
     (unwind-protect
         (with-current-buffer buf
           (sops--find-file-hook)
@@ -662,7 +664,8 @@ backup/auto-save suppression."
 
 (ert-deftest sops-test--find-file-hook-skips-non-prefiltered ()
   "find-file-hook ignores files not matching sops-prefilter-regex."
-  (let ((tmp (make-temp-file "sops-test-png-" nil ".png")))
+  (let ((find-file-hook nil)
+        (tmp (make-temp-file "sops-test-png-" nil ".png")))
     (unwind-protect
         (let ((buf (find-file-noselect tmp)))
           (with-current-buffer buf
@@ -682,8 +685,12 @@ spawning a subprocess that would error."
     (should-not sops-mode)))
 
 (ert-deftest sops-test--find-file-hook-decrypt-failure-makes-readonly ()
-  "On decrypt failure, buffer is read-only and sops-mode not enabled."
-  (let* ((file (sops-test--fixture "secrets.enc.yaml"))
+  "On decrypt failure, buffer is read-only and sops-mode not enabled.
+The bad SOPS_AGE_KEY_FILE only affects the decrypt step; sops --version
+and sops filestatus inspect metadata only and don't need the key, so
+the guard chain reaches `sops--decrypt-buffer' before failing."
+  (let* ((find-file-hook nil)
+         (file (sops-test--fixture "secrets.enc.yaml"))
          (buf (find-file-noselect file))
          (buf-name (format "*sops-error: %s*" file)))
     (when (get-buffer buf-name) (kill-buffer buf-name))
@@ -697,6 +704,31 @@ spawning a subprocess that would error."
           (should (get-buffer buf-name)))
       (when (get-buffer buf-name) (kill-buffer buf-name))
       (kill-buffer buf))))
+
+(ert-deftest sops-test--find-file-hook-swallows-user-error-from-version ()
+  "When `sops--ensure-version' raises user-error (sops missing/too old),
+the hook logs and returns nil rather than propagating to the debugger."
+  (let ((sops-executable "/no/such/sops/binary")
+        (sops--version-cache nil))
+    (with-temp-buffer
+      (setq buffer-file-name (sops-test--fixture "secrets.enc.yaml"))
+      ;; Should NOT signal; condition-case in the hook traps user-error.
+      (sops--find-file-hook)
+      (should-not sops-mode))))
+
+(ert-deftest sops-test--global-sops-mode-toggles-find-file-hook ()
+  "Toggling global-sops-mode adds/removes sops--find-file-hook globally.
+`add-hook' modifies the default (global) value of `find-file-hook'
+unless told otherwise, so we check `default-value' rather than the
+buffer-local value, and restore prior state in `unwind-protect'."
+  (let ((was-on global-sops-mode))
+    (unwind-protect
+        (progn
+          (global-sops-mode 1)
+          (should (memq #'sops--find-file-hook (default-value 'find-file-hook)))
+          (global-sops-mode -1)
+          (should-not (memq #'sops--find-file-hook (default-value 'find-file-hook))))
+      (if was-on (global-sops-mode 1) (global-sops-mode -1)))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
