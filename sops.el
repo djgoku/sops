@@ -369,5 +369,32 @@ function checks for that surviving flag and re-installs the rest."
 (add-hook 'after-change-major-mode-hook
           #'sops--restore-after-major-mode-change)
 
+(defun sops--find-file-hook ()
+  "On find-file: if file matches prefilter and is sops-encrypted, decrypt.
+Skips remote (TRAMP) files in v2.0 — local sops binary cannot read TRAMP
+paths.  Remote support belongs in the separate `tramp-sops' package."
+  (when (and buffer-file-name
+             (not (file-remote-p buffer-file-name))
+             (sops--prefilter-p buffer-file-name)
+             (file-readable-p buffer-file-name))
+    (condition-case err
+        (when (sops--ensure-version)
+          (when (sops--filestatus buffer-file-name)
+            (if (sops--decrypt-buffer)
+                (sops-mode 1)
+              (read-only-mode 1))))
+      (user-error
+       ;; sops missing or too old: log once, do nothing
+       (message "sops: %s" (error-message-string err))))))
+
+;;;###autoload
+(define-globalized-minor-mode global-sops-mode
+  sops-mode
+  (lambda () nil)  ; sops-mode itself is enabled inside sops--find-file-hook, not here
+  :group 'sops
+  (if global-sops-mode
+      (add-hook 'find-file-hook #'sops--find-file-hook)
+    (remove-hook 'find-file-hook #'sops--find-file-hook)))
+
 (provide 'sops)
 ;;; sops.el ends here

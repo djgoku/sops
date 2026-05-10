@@ -639,5 +639,64 @@ backup/auto-save suppression."
       ;; sops--state is also permanent-local, so the struct survives
       (should (sops-state-p sops--state)))))
 
+(ert-deftest sops-test--find-file-hook-decrypts-encrypted ()
+  "find-file-hook on encrypted file decrypts and enables sops-mode."
+  (let ((buf (find-file-noselect (sops-test--fixture "secrets.enc.yaml"))))
+    (unwind-protect
+        (with-current-buffer buf
+          (sops--find-file-hook)
+          (should sops-mode)
+          (should (string-match-p "database_password: super-secret-yaml"
+                                  (buffer-string))))
+      (kill-buffer buf))))
+
+(ert-deftest sops-test--find-file-hook-skips-plaintext ()
+  "find-file-hook on plaintext yaml does nothing."
+  (let ((buf (find-file-noselect (sops-test--fixture "plain.yaml"))))
+    (unwind-protect
+        (with-current-buffer buf
+          (sops--find-file-hook)
+          (should-not sops-mode)
+          (should (string-match-p "not: a-sops-file" (buffer-string))))
+      (kill-buffer buf))))
+
+(ert-deftest sops-test--find-file-hook-skips-non-prefiltered ()
+  "find-file-hook ignores files not matching sops-prefilter-regex."
+  (let ((tmp (make-temp-file "sops-test-png-" nil ".png")))
+    (unwind-protect
+        (let ((buf (find-file-noselect tmp)))
+          (with-current-buffer buf
+            (sops--find-file-hook)
+            (should-not sops-mode))
+          (kill-buffer buf))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--find-file-hook-skips-tramp ()
+  "find-file-hook is a no-op for remote (TRAMP) paths.
+Remote sops support is out of scope for v2.0 (tracked in tramp-sops);
+the local sops binary cannot read TRAMP paths, so we skip rather than
+spawning a subprocess that would error."
+  (with-temp-buffer
+    (setq buffer-file-name "/ssh:host:/path/to/secret.yaml")
+    (sops--find-file-hook)
+    (should-not sops-mode)))
+
+(ert-deftest sops-test--find-file-hook-decrypt-failure-makes-readonly ()
+  "On decrypt failure, buffer is read-only and sops-mode not enabled."
+  (let* ((file (sops-test--fixture "secrets.enc.yaml"))
+         (buf (find-file-noselect file))
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((process-environment
+                 (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent-key" process-environment)))
+            (sops--find-file-hook))
+          (should-not sops-mode)
+          (should buffer-read-only)
+          (should (get-buffer buf-name)))
+      (when (get-buffer buf-name) (kill-buffer buf-name))
+      (kill-buffer buf))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
