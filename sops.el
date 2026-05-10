@@ -165,5 +165,16 @@ Signals `user-error' if sops is missing or too old.  Caches result."
       (setq sops--version-cache (cons sops-executable version))))
   (cdr sops--version-cache))
 
+(defun sops--filestatus (file)
+  "Return t if FILE is sops-encrypted, nil otherwise.
+Threads `sops-input-type-overrides' as `--input-type' if matched."
+  (let* ((input-type (sops--input-type-for file))
+         (args (append '("filestatus")
+                       (when input-type (list "--input-type" input-type))
+                       (list file)))
+         (result (sops--run args)))
+    (and (eq 0 (plist-get result :exit-status))
+         (sops--parse-filestatus (plist-get result :stdout)))))
+
 (provide 'sops)
 ;;; sops.el ends here

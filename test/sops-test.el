@@ -270,5 +270,28 @@ Locks the contract that sops--run does not silently swallow exec failures."
     (should-error (sops--ensure-version) :type 'user-error))
   (should (eq nil sops--version-cache)))
 
+(ert-deftest sops-test--filestatus-encrypted-fixture ()
+  "Real sops filestatus returns t on encrypted YAML fixture."
+  (should (eq t (sops--filestatus (sops-test--fixture "secrets.enc.yaml")))))
+
+(ert-deftest sops-test--filestatus-encrypted-json ()
+  (should (eq t (sops--filestatus (sops-test--fixture "config.enc.json")))))
+
+(ert-deftest sops-test--filestatus-encrypted-env ()
+  (should (eq t (sops--filestatus (sops-test--fixture "vars.enc.env")))))
+
+(ert-deftest sops-test--filestatus-encrypted-txt-needs-input-type ()
+  "TXT fixture requires sops-input-type-overrides for sops to know format."
+  (let ((sops-input-type-overrides
+         '(("notes\\.enc\\.txt\\'" . "yaml"))))
+    (should (eq t (sops--filestatus (sops-test--fixture "notes.enc.txt"))))))
+
+(ert-deftest sops-test--filestatus-plaintext-fixture ()
+  (should (eq nil (sops--filestatus (sops-test--fixture "plain.yaml")))))
+
+(ert-deftest sops-test--filestatus-nonexistent-file ()
+  "Returns nil for non-existent file (sops errors, we degrade gracefully)."
+  (should (eq nil (sops--filestatus "/tmp/nonexistent-sops-test-file.yaml"))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
