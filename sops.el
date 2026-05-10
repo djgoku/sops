@@ -267,7 +267,12 @@ Caller must have set `buffer-file-name' to the encrypted file path."
 
 (defun sops--encrypt-and-write ()
   "Encrypt current buffer via sops and write to `buffer-file-name'.
-Return t on success.  Signals `user-error' on failure (aborts save)."
+Return t on success.  Signals `user-error' on failure (aborts save).
+
+Reads the full buffer (widened) so a narrowed buffer isn't silently
+truncated on save.  Suppresses backups (`make-backup-files') around
+the write because ciphertext backups accumulate without recovery
+value -- the user can't usefully edit them manually."
   (run-hooks 'sops-before-encrypt-hook)
   (let* ((file buffer-file-name)
          (input-type (sops--input-type-for file))
@@ -276,8 +281,10 @@ Return t on success.  Signals `user-error' on failure (aborts save)."
                        (when input-type (list "--input-type" input-type))
                        sops-extra-encrypt-args
                        '("/dev/stdin")))
-         (result (sops--run args :input (buffer-substring-no-properties
-                                         (point-min) (point-max))))
+         (result (sops--run args :input (save-restriction
+                                          (widen)
+                                          (buffer-substring-no-properties
+                                           (point-min) (point-max)))))
          (exit (plist-get result :exit-status))
          (stdout (plist-get result :stdout)))
     (cond
@@ -287,7 +294,8 @@ Return t on success.  Signals `user-error' on failure (aborts save)."
      ((zerop (length stdout))
       (sops--popup-error file args exit "sops: encrypt produced empty output\n")
       (user-error "sops encrypt produced empty output")))
-    (let ((coding-system-for-write 'no-conversion))
+    (let ((coding-system-for-write 'no-conversion)
+          (make-backup-files nil))
       (write-region stdout nil file nil 'silent))
     (set-buffer-modified-p nil)
     t))

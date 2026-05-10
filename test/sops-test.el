@@ -450,5 +450,94 @@ is set explicitly."
             (should (equal tmp called))))
       (delete-file tmp))))
 
+(ert-deftest sops-test--encrypt-and-write-widens-narrowed-buffer ()
+  "Encrypt-and-write writes the full buffer even when the buffer is narrowed.
+A narrowed `(point-min)..(point-max)' would otherwise truncate the
+encrypted file to just the visible region -- silent data loss."
+  (sops-test--ensure-fixtures)
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-narrow-" sops-test--fixtures)
+               nil ".enc.yaml")))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (goto-char (point-max))
+            (insert "outside_narrow: should-survive\n")
+            ;; Narrow to the first line; without `widen' the encrypt
+            ;; would only see that line and clobber the rest.
+            (goto-char (point-min))
+            (narrow-to-region (point-min) (line-end-position))
+            (sops--encrypt-and-write))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (should (string-match-p "outside_narrow: should-survive"
+                                    (buffer-string)))))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--encrypt-and-write-suppresses-backup ()
+  "Save creates no backup file even when `make-backup-files' is t."
+  (sops-test--ensure-fixtures)
+  (let* ((src (sops-test--fixture "secrets.enc.yaml"))
+         (tmp (make-temp-file
+               (expand-file-name "sops-test-backup-" sops-test--fixtures)
+               nil ".enc.yaml"))
+         (backup (concat tmp "~"))
+         ;; Force-enable backups globally; the helper should still suppress.
+         (make-backup-files t))
+    (unwind-protect
+        (progn
+          (copy-file src tmp t)
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq default-directory (file-name-directory tmp))
+            (insert-file-contents tmp)
+            (sops--decrypt-buffer)
+            (goto-char (point-max))
+            (insert "added: 1\n")
+            (sops--encrypt-and-write))
+          (should-not (file-exists-p backup)))
+      (when (file-exists-p backup) (delete-file backup))
+      (delete-file tmp))))
+
+(ert-deftest sops-test--encrypt-and-write-passes-extra-encrypt-args ()
+  "Items in `sops-extra-encrypt-args' appear in the sops invocation.
+Stubs `sops--run' so we can lock the wiring without depending on a
+specific sops flag being a no-op for encrypt."
+  (let* ((tmp (make-temp-file "sops-test-extra-" nil ".enc.yaml"))
+         (sops-extra-encrypt-args '("-a" "age1stub"))
+         (captured-args nil))
+    (unwind-protect
+        (cl-letf (((symbol-function 'sops--run)
+                   (lambda (args &rest _keys)
+                     (setq captured-args args)
+                     (list :exit-status 0
+                           :stdout "stub-ciphertext\n"
+                           :stderr ""))))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (insert "plaintext\n")
+            (sops--encrypt-and-write))
+          ;; Both extra-args land between --filename-override and /dev/stdin.
+          (should (member "-a" captured-args))
+          (should (member "age1stub" captured-args))
+          (should (equal "/dev/stdin" (car (last captured-args))))
+          ;; Order: -a comes before age1stub (preserved from input list).
+          (let ((dash-a-pos (cl-position "-a" captured-args :test #'equal))
+                (stub-pos (cl-position "age1stub" captured-args :test #'equal))
+                (stdin-pos (cl-position "/dev/stdin" captured-args :test #'equal)))
+            (should (and dash-a-pos stub-pos stdin-pos))
+            (should (< dash-a-pos stub-pos))
+            (should (< stub-pos stdin-pos))))
+      (when (file-exists-p tmp) (delete-file tmp)))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
