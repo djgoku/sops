@@ -57,15 +57,21 @@ Files not matching are never checked, so their open path is unaffected."
 
 (defcustom sops-input-type-overrides nil
   "Alist of (REGEX . INPUT-TYPE) for files whose extension sops can't infer.
-When BUFFER-FILE-NAME matches REGEX, INPUT-TYPE is passed as
-`--input-type INPUT-TYPE' to sops filestatus, decrypt, and encrypt.
+When the file path matches REGEX, INPUT-TYPE is passed as
+\"--input-type INPUT-TYPE\" to sops filestatus, decrypt, and encrypt.
 
-Example: (setq sops-input-type-overrides \\='((\".secrets\\\\'\" . \"yaml\")))"
+Each car is an Emacs regular expression matched against the file path
+with `string-match-p'; remember to escape literal dots (\".envrc\" matches
+any single char before \"envrc\"; use \"\\\\.envrc\" for a literal dot).
+Each cdr is the parser name sops should use (\"yaml\", \"json\",
+\"dotenv\", \"ini\", etc.).  Pairs are tried in list order; the first
+match wins."
   :type '(alist :key-type regexp :value-type string)
   :group 'sops)
 
 (defun sops--input-type-for (filename)
-  "Return input-type string for FILENAME from `sops-input-type-overrides', or nil."
+  "Return input-type string for FILENAME from `sops-input-type-overrides', or nil.
+Pairs in the alist are tried in list order; the first match wins."
   (when filename
     (cdr (cl-find-if (lambda (pair) (string-match-p (car pair) filename))
                      sops-input-type-overrides))))

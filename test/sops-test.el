@@ -148,16 +148,24 @@ Pin `case-fold-search' so the suite isn't sensitive to runner state."
     (should (eq nil (sops--input-type-for "/tmp/x.yaml")))))
 
 (ert-deftest sops-test--input-type-for-with-override ()
-  "Returns the matching type string."
-  (let ((sops-input-type-overrides '((".secrets\\'" . "yaml")
-                                     (".envrc\\'" . "dotenv"))))
+  "Returns the matching type string; literal-dot escaping is honored."
+  (let ((sops-input-type-overrides '(("\\.secrets\\'" . "yaml")
+                                     ("\\.envrc\\'" . "dotenv"))))
     (should (equal "yaml" (sops--input-type-for "/tmp/x.secrets")))
     (should (equal "dotenv" (sops--input-type-for "/tmp/.envrc")))
-    (should (eq nil (sops--input-type-for "/tmp/x.yaml")))))
+    (should (eq nil (sops--input-type-for "/tmp/x.yaml")))
+    ;; Pin the literal-dot expectation: an unescaped `.' would match here.
+    (should (eq nil (sops--input-type-for "/tmp/asecrets")))))
 
 (ert-deftest sops-test--input-type-for-nil-filename ()
   "Returns nil for nil filename without erroring."
   (should (eq nil (sops--input-type-for nil))))
+
+(ert-deftest sops-test--input-type-for-first-match-wins ()
+  "When two pairs both match, the first one in list order is returned."
+  (let ((sops-input-type-overrides '(("\\.foo\\'" . "first")
+                                     ("\\.foo\\'" . "second"))))
+    (should (equal "first" (sops--input-type-for "/tmp/x.foo")))))
 
 (provide 'sops-test)
 ;;; sops-test.el ends here
