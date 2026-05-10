@@ -201,5 +201,28 @@ Locks the discriminator against future `truthiness' loosening."
   "Non-string input returns nil rather than erroring."
   (should (eq nil (sops--parse-filestatus nil))))
 
+(ert-deftest sops-test--run-version-success ()
+  "sops--run with --version returns exit 0 and version string in stdout."
+  (let ((result (sops--run '("--version"))))
+    (should (eq 0 (plist-get result :exit-status)))
+    (should (string-match-p "^sops" (plist-get result :stdout)))))
+
+(ert-deftest sops-test--run-bad-args-failure ()
+  "sops--run with garbage returns non-zero exit and stderr content."
+  (let ((result (sops--run '("nonexistent-subcommand"))))
+    (should-not (eq 0 (plist-get result :exit-status)))))
+
+(ert-deftest sops-test--run-with-input ()
+  "sops--run can pipe input via :input."
+  (let ((result (sops--run '("filestatus" "--input-type" "yaml" "/dev/stdin")
+                           :input "foo: bar\n")))
+    (should (eq 0 (plist-get result :exit-status)))
+    (should (string-match-p "encrypted" (plist-get result :stdout)))))
+
+(ert-deftest sops-test--run-version-check-disabled ()
+  "stderr does not contain sops update-check noise."
+  (let ((result (sops--run '("--version"))))
+    (should-not (string-match-p "new version of sops" (plist-get result :stderr)))))
+
 (provide 'sops-test)
 ;;; sops-test.el ends here
