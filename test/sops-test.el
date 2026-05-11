@@ -577,6 +577,74 @@ with `status' = `decrypted'."
       (should (buffer-modified-p))
       (should-error (sops-mode -1) :type 'user-error))))
 
+(ert-deftest sops-test--mode-enable-refuses-non-sops-buffer ()
+  "Manual `M-x sops-mode' on a non-sops buffer signals user-error and
+does not leave the mode partially enabled.  Regression test for the
+trap where the disable branch refuses on a modified buffer, so an
+accidental enable on a plaintext file becomes unrecoverable."
+  (let ((file (sops-test--fixture "plain.yaml")))
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (insert-file-contents file)
+      (should-error (sops-mode 1) :type 'user-error)
+      (should-not sops-mode)
+      (should-not sops--state)
+      (should-not (memq #'sops--write-contents-function
+                        write-contents-functions)))))
+
+(ert-deftest sops-test--mode-enable-refuses-buffer-with-no-file ()
+  "`M-x sops-mode' on a buffer with no `buffer-file-name' refuses
+cleanly rather than shelling out to sops with a nil path."
+  (with-temp-buffer
+    (insert "scratch contents\n")
+    (should-error (sops-mode 1) :type 'user-error)
+    (should-not sops-mode)
+    (should-not sops--state)))
+
+(ert-deftest sops-test--find-file-on-non-prefiltered-leaves-mode-off ()
+  "With `global-sops-mode' on, real `find-file' on a file outside
+`sops-prefilter-regex' (here a Terraform `.tf' file) must not enable
+sops-mode -- the prefilter short-circuits before any sops shellout.
+Regression test for a user report where opening a `.tf' file caused
+encrypt-on-save to fire and trap the buffer (since the disable branch
+refuses on modified buffers)."
+  (let* ((was-on global-sops-mode)
+         (tmp (make-temp-file "sops-test-tf-" nil ".tf")))
+    (unwind-protect
+        (progn
+          (with-temp-file tmp
+            (insert "resource \"aws_s3_bucket\" \"x\" {}\n"))
+          (global-sops-mode 1)
+          (let ((buf (find-file-noselect tmp)))
+            (unwind-protect
+                (with-current-buffer buf
+                  (should-not sops-mode)
+                  (should-not sops--state)
+                  (should-not (memq #'sops--write-contents-function
+                                    write-contents-functions)))
+              (kill-buffer buf))))
+      (if was-on (global-sops-mode 1) (global-sops-mode -1))
+      (when (file-exists-p tmp) (delete-file tmp)))))
+
+(ert-deftest sops-test--find-file-on-prefiltered-plain-yaml-leaves-mode-off ()
+  "With `global-sops-mode' on, real `find-file' on a file that matches
+`sops-prefilter-regex' but is NOT sops-encrypted must not enable
+sops-mode -- `sops--filestatus' returns nil and the hook bails."
+  (let* ((was-on global-sops-mode)
+         (file (sops-test--fixture "plain.yaml")))
+    (unwind-protect
+        (progn
+          (global-sops-mode 1)
+          (let ((buf (find-file-noselect file)))
+            (unwind-protect
+                (with-current-buffer buf
+                  (should-not sops-mode)
+                  (should-not sops--state)
+                  (should-not (memq #'sops--write-contents-function
+                                    write-contents-functions)))
+              (kill-buffer buf))))
+      (if was-on (global-sops-mode 1) (global-sops-mode -1)))))
+
 (ert-deftest sops-test--save-buffer-encrypts ()
   "save-buffer in sops-mode triggers encrypt-and-write."
   (let* ((src (sops-test--fixture "secrets.enc.yaml"))

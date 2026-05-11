@@ -340,6 +340,10 @@ and the buffer stays read-only with ciphertext."
   (set-buffer-modified-p nil)
   (when (sops--decrypt-buffer)
     (read-only-mode -1)
+    ;; Pre-set state so the `sops-mode' enable guard skips its own
+    ;; `sops--filestatus' re-check -- we just decrypted, the file is
+    ;; sops-encrypted by definition.
+    (setq sops--state (sops-state-create :status 'decrypted))
     (sops-mode 1)))
 
 (defun sops--revert-buffer (&rest _args)
@@ -379,7 +383,21 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
   :group 'sops
   (cond
    (sops-mode
+    ;; Refuse to enable on a buffer whose visited file isn't sops-encrypted.
+    ;; `sops--find-file-hook' and `sops--retry-decrypt-on-revert' both
+    ;; validate via `sops--filestatus' + a successful decrypt before
+    ;; reaching here, so they pre-set `sops--state' to signal "trust me".
+    ;; This guard catches manual `M-x sops-mode' on a regular buffer,
+    ;; which would otherwise install encrypt-on-save hooks that fail at
+    ;; save time -- and the disable branch's modified-buffer guardrail
+    ;; would then trap the user with no clean escape.
     (unless sops--state
+      (unless (and buffer-file-name
+                   (not (file-remote-p buffer-file-name))
+                   (sops--filestatus buffer-file-name))
+        (setq sops-mode nil)
+        (user-error "sops-mode: %s is not a sops-encrypted file"
+                    (or buffer-file-name "this buffer")))
       (setq sops--state (sops-state-create :status 'decrypted)))
     (setq-local make-backup-files nil)
     (setq-local buffer-auto-save-file-name nil)
@@ -456,7 +474,13 @@ paths.  Remote support belongs in the separate `tramp-sops' package."
         (when (sops--ensure-version)
           (when (sops--filestatus buffer-file-name)
             (if (sops--decrypt-buffer)
-                (sops-mode 1)
+                (progn
+                  ;; Pre-set state so the `sops-mode' enable guard skips
+                  ;; its own `sops--filestatus' re-check -- we just
+                  ;; validated above and ran decrypt successfully.
+                  (setq sops--state
+                        (sops-state-create :status 'decrypted))
+                  (sops-mode 1))
               ;; Decrypt failed: park the retry function on
               ;; `revert-buffer-function' so the popped error buffer's
               ;; "M-x revert-buffer to retry" hint actually works.  On
