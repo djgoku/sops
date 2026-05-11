@@ -316,6 +316,32 @@ our write replaced it."
 Returns t when save was handled (skipping normal write); signals user-error on fail."
   (sops--encrypt-and-write))
 
+(defun sops--retry-decrypt-on-revert (&rest _args)
+  "Retry sops decrypt as a `revert-buffer-function' after initial failure.
+Installed in `sops--find-file-hook' when the first `sops--decrypt-buffer'
+call exits non-zero -- without this hook, `revert-buffer' would fall
+through to the default implementation which just re-reads the encrypted
+bytes and never re-invokes sops, so the recovery hint printed into
+`*sops-error:*' (\"fix auth, then M-x revert-buffer\") would be a lie.
+
+Re-reads the encrypted file from disk (in case the user also fixed
+things externally) and re-runs `sops--decrypt-buffer'.  On success,
+disables `read-only-mode' and enables `sops-mode' -- enabling sops-mode
+installs the real `sops--revert-buffer' for subsequent reverts, so this
+retry function only runs as long as decrypt keeps failing.  On
+continued failure, `sops--decrypt-buffer' pops the error buffer again
+and the buffer stays read-only with ciphertext."
+  (save-restriction
+    (widen)
+    (set-visited-file-modtime)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (insert-file-contents buffer-file-name)))
+  (set-buffer-modified-p nil)
+  (when (sops--decrypt-buffer)
+    (read-only-mode -1)
+    (sops-mode 1)))
+
 (defun sops--revert-buffer (&rest _args)
   "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
 Widens before erasing so a narrowed buffer doesn't corrupt itself with
@@ -431,6 +457,24 @@ paths.  Remote support belongs in the separate `tramp-sops' package."
           (when (sops--filestatus buffer-file-name)
             (if (sops--decrypt-buffer)
                 (sops-mode 1)
+              ;; Decrypt failed: park the retry function on
+              ;; `revert-buffer-function' so the popped error buffer's
+              ;; "M-x revert-buffer to retry" hint actually works.  On
+              ;; successful retry, sops-mode activation replaces this with
+              ;; the real `sops--revert-buffer'.
+              (setq-local revert-buffer-function
+                          #'sops--retry-decrypt-on-revert)
+              ;; Emacs 30 added `revert-buffer-restore-functions', whose
+              ;; default member `revert-buffer-restore-read-only' snapshots
+              ;; `buffer-read-only' before the revert function runs and
+              ;; restores it after.  That would undo the `(read-only-mode
+              ;; -1)' our retry function does on successful re-decrypt --
+              ;; the buffer would re-decrypt cleanly but stay read-only.
+              ;; Clear the buffer-local list so the retry's state changes
+              ;; persist; on Emacs <30 the symbol is unbound and the
+              ;; `boundp' guard keeps the byte-compiler quiet.
+              (when (boundp 'revert-buffer-restore-functions)
+                (setq-local revert-buffer-restore-functions nil))
               (read-only-mode 1))))
       (user-error
        ;; sops missing or too old: log once, do nothing

@@ -711,6 +711,42 @@ the guard chain reaches `sops--decrypt-buffer' before failing."
       (when (get-buffer buf-name) (kill-buffer buf-name))
       (kill-buffer buf))))
 
+(ert-deftest sops-test--revert-after-decrypt-failure-retries ()
+  "After an initial decrypt failure, `revert-buffer' retries decrypt.
+The spec contract is: when the user fixes their auth (e.g. exports the
+right `AWS_PROFILE') and runs \\[revert-buffer], the buffer must
+re-attempt decryption, clear `read-only-mode' on success, and enter
+`sops-mode' so editing/saving works.  Without this, the recovery hint
+in the popped `*sops-error:*' buffer is a lie.
+
+The test runs `sops--find-file-hook' inside a let-bound bad
+`SOPS_AGE_KEY_FILE' to force the failure path, then calls
+`revert-buffer' OUTSIDE that let so the mise-injected good key is in
+effect — simulating the user fixing their environment between attempts."
+  (let* ((find-file-hook nil)
+         (file (sops-test--fixture "secrets.enc.yaml"))
+         (buf (find-file-noselect file))
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((process-environment
+                 (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent-key" process-environment)))
+            (sops--find-file-hook))
+          ;; Precondition: initial decrypt failed as expected.
+          (should-not sops-mode)
+          (should buffer-read-only)
+          ;; User "fixes the issue" -- env now has the good key -- and reverts.
+          (revert-buffer t t)
+          ;; Postcondition: decrypt retried, buffer editable, sops-mode on.
+          (should sops-mode)
+          (should-not buffer-read-only)
+          (should (string-match-p "database_password: super-secret-yaml"
+                                  (buffer-string))))
+      (when (get-buffer buf-name) (kill-buffer buf-name))
+      (with-current-buffer buf (set-buffer-modified-p nil))
+      (kill-buffer buf))))
+
 (ert-deftest sops-test--find-file-hook-swallows-user-error-from-version ()
   "When `sops--ensure-version' raises user-error (sops missing/too old),
 the hook logs and returns nil rather than propagating to the debugger."
