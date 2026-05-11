@@ -1,0 +1,54 @@
+* v2.0.0 - Unreleased
+
+** Breaking changes
+
+*** Removed commands
+
+| v1                   | v2 replacement                                                                                        |
+|----------------------+-------------------------------------------------------------------------------------------------------|
+| =M-x sops-edit-file= | Just =M-x find-file= — decryption is automatic                                                        |
+| =M-x sops-save-file= | Just =C-x C-s= (=save-buffer=) — encryption is automatic                                              |
+| =M-x sops-cancel=    | No command needed.  Don't save → file unchanged.  Use =M-x revert-buffer= to discard in-buffer edits. |
+
+*** Removed variables / hooks
+
+| v1                                             | v2 replacement                                                       |
+|------------------------------------------------+----------------------------------------------------------------------|
+| =sops-before-encrypt-decrypt-hook=             | Split into =sops-before-decrypt-hook= and =sops-before-encrypt-hook= |
+| =sops--sops-version-greater-than-equal-to-3-9= | Removed (sops 3.9+ required, no branching)                           |
+| =sops--status=                                 | Replaced by =sops--state.status= slot                                |
+| =sops--original-buffer-file-name=              | Use =buffer-file-name= — both v2 hooks run in the file's own buffer  |
+| =sops--original-buffer-string=                 | Removed; no temp buffer (Approach D edits in place)                  |
+| =sops--original-buffer-name=                   | Removed; no buffer renaming                                          |
+
+*** Behavior changes
+
+- Detection: content-scan replaced by =sops filestatus= (sops's own metadata parser).
+- Decryption: automatic on =find-file= (was manual via =sops-edit-file=).
+- Save: automatic on =save-buffer= (was manual via =sops-save-file=).
+- Backup files (=.~=) and auto-save files (=#autosave#=) are now suppressed automatically.
+- *Hook execution context.*  In v1, =sops-before-encrypt-decrypt-hook= ran
+  in two different buffers: the user's original buffer for decrypt (where
+  =buffer-file-name= pointed at the encrypted file), and the
+  =*sops-mode-process*-/path= temp buffer for encrypt (where
+  =buffer-file-name= was =nil= and the path lived in
+  =sops--original-buffer-file-name=).  v2 has no temp buffer — both
+  =sops-before-decrypt-hook= and =sops-before-encrypt-hook= run in the
+  buffer visiting the encrypted file, and =buffer-file-name= is that
+  file's path in either case.  A v1 hook that branched on which variable
+  was set, or used =sops--original-buffer-file-name= for the encrypt path,
+  can collapse to a single read of =buffer-file-name=.
+
+** New
+
+- Transparent decryption on =find-file=
+- Transparent encryption on =save-buffer=
+- Auto-suppression of backups and auto-saves to prevent plaintext on disk
+- Detection via =sops filestatus= (was content-scan heuristic)
+- New defcustom =sops-input-type-overrides= for files with non-default extensions
+- One-time migration warnings when v1 configuration is detected
+
+** v1 documentation
+
+For history of v1 features, see the v0.1.8 README:
+https://github.com/djgoku/sops/blob/v0.1.8/README.org

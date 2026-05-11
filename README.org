@@ -58,12 +58,13 @@ Example (set =AWS_PROFILE= based on the file's KMS ARN):
 
 #+begin_src elisp
 (defun my/sops-setup-aws-profile ()
-  (when (and buffer-file-name
-             (string-match "arn:aws:kms.*:\\([[:digit:]]+\\):"
-                           (with-temp-buffer
-                             (insert-file-contents buffer-file-name)
-                             (buffer-string))))
-    (pcase (match-string-no-properties 1)
+  (when-let* ((file buffer-file-name)
+              ((file-readable-p file))
+              (contents (with-temp-buffer
+                          (insert-file-contents file)
+                          (buffer-string)))
+              ((string-match "arn:aws:kms.*?:\\([[:digit:]]+\\):" contents)))
+    (pcase (match-string-no-properties 1 contents)
       ("111111111111" (setenv "AWS_PROFILE" "dev"))
       ("222222222222" (setenv "AWS_PROFILE" "stage")))))
 
@@ -88,7 +89,24 @@ Remove all of the above. =find-file= and =save-buffer= now do the right
 thing automatically.
 
 If you used =sops-before-encrypt-decrypt-hook=, split it into
-=sops-before-decrypt-hook= and =sops-before-encrypt-hook=.
+=sops-before-decrypt-hook= and =sops-before-encrypt-hook=.  The
+*context* the hooks run in also changed and affects how you write the
+body:
+
+- v1's combined hook ran in two different buffers — the user's
+  original buffer for decrypt (where =buffer-file-name= pointed at the
+  encrypted file) and the =*sops-mode-process*-/path= temp buffer for
+  encrypt (where =buffer-file-name= was =nil= and the path lived in
+  the internal =sops--original-buffer-file-name= local).
+- v2 has no temp buffer.  Both hooks run in the same buffer that
+  visits the encrypted file, and =buffer-file-name= is that file's
+  path in both cases.  Read =buffer-file-name= directly; the
+  =sops--original-*= locals are gone.
+
+If your v1 hook handled the encrypt path by reading
+=sops--original-buffer-file-name= (or branched on whether
+=buffer-file-name= was =nil=), replace it with a plain
+=buffer-file-name= read — the encrypt-side branch is no longer needed.
 
 See =NEWS.org= for the full break list.
 
