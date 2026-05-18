@@ -364,9 +364,31 @@ whether the subsequent decrypt succeeds."
   "Hook run before each sops encrypt invocation.
 Runs in the buffer being encrypted; the variable `buffer-file-name'
 holds the target file's path.  Use to set `AWS_PROFILE', age key paths.
-The hook fires unconditionally before `sops--run'."
+The hook fires unconditionally before `sops--run'.
+
+NOTE: on the first save of a `sops-find-file' \\='creating buffer, no
+ciphertext exists on disk yet -- `buffer-file-name' names the file that
+is about to be created.  A hook that reads `buffer-file-name' from disk
+\(e.g. to grep the existing ciphertext for a KMS ARN) will signal
+`file-missing' in this case.  Guard such code with `sops-creating-p'
+or `(file-exists-p buffer-file-name)' and use an alternative source
+\(such as `.sops.yaml') for the create path."
   :type 'hook
   :group 'sops)
+
+(defun sops-creating-p ()
+  "Return non-nil if the current buffer is in `sops-mode' \\='creating state.
+A buffer enters \\='creating state when `sops-find-file' visits a path
+that does not exist on disk: the buffer is seeded with a stub from
+`sops--example-for' but no ciphertext has been written yet.  On the
+first successful `save-buffer', `sops--encrypt-and-write' writes the
+file and transitions the buffer to \\='decrypted state.
+
+Intended for use inside `sops-before-encrypt-hook' so hook authors can
+skip on-disk reads of `buffer-file-name' on the first save -- the file
+does not yet exist, so `insert-file-contents' (etc.) would signal
+`file-missing'."
+  (and sops--state (eq 'creating (sops-state-status sops--state))))
 
 (defun sops--maybe-output-type (input-type existing-args)
   "Return `(\"--output-type\" INPUT-TYPE)' to thread into a sops call, or nil.

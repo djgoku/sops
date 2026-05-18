@@ -1393,6 +1393,22 @@ native binary store, not yaml parsing."
             (should (eq 'decrypted (sops-state-status sops--state)))))
       (when (file-exists-p tmp) (delete-file tmp)))))
 
+;;; -------- sops-creating-p --------
+
+(ert-deftest sops-test--creating-p-reflects-state ()
+  "`sops-creating-p' is t only when `sops--state.status' is \\='creating.
+Returns nil for \\='decrypted and for buffers where `sops--state' is nil
+\(plain, non-sops-mode buffers).  Hook authors rely on this predicate
+to skip on-disk reads of `buffer-file-name' when the first save of a
+`sops-find-file' \\='creating buffer hasn't yet written the ciphertext."
+  (with-temp-buffer
+    (should-not sops--state)
+    (should-not (sops-creating-p))
+    (setq sops--state (sops-state-create :status 'creating))
+    (should (sops-creating-p))
+    (setf (sops-state-status sops--state) 'decrypted)
+    (should-not (sops-creating-p))))
+
 ;;; -------- sops-find-file --------
 
 (ert-deftest sops-test--find-file-rejects-remote ()

@@ -54,6 +54,14 @@
   a =creating= state with a sops =EmitExample= stub and encrypt on
   first save.  Requires =.sops.yaml= reachable in an ancestor of the
   target path.
+- =sops-creating-p=: public predicate that returns non-nil when the
+  current buffer is a =sops-find-file= =creating= buffer (no ciphertext
+  on disk yet).  Use inside =sops-before-encrypt-hook= to guard hooks
+  that read =buffer-file-name= from disk -- on the first save of a
+  =creating= buffer there is no file yet, so =insert-file-contents=
+  would signal =file-missing=.  Pull the metadata you need (KMS ARN,
+  age recipients, etc.) from =.sops.yaml= or an explicit alist on the
+  create path instead.
 
 ** v0.1.X documentation
 
