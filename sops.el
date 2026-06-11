@@ -257,8 +257,9 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
                  :filter filter
                  :sentinel (lambda (_p _event) (setq done t))))
           (set-process-coding-system proc 'utf-8-unix 'utf-8-unix)
-          (while (not done)
+          (while (and (not done) (process-live-p proc))
             (accept-process-output proc 0.1))
+          (accept-process-output proc 0 nil t)
           (list :exit-status (process-exit-status proc)
                 :stdout (with-current-buffer stdout-buf (buffer-string))
                 :stderr (with-current-buffer stderr-buf (buffer-string))))

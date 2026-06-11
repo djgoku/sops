@@ -240,6 +240,30 @@ include `/dev/stdin' (or any input source) in their ARGS list."
     (should (eq 0 (plist-get result :exit-status)))
     (should (string-match-p "encrypted" (plist-get result :stdout)))))
 
+(ert-deftest sops-test--run-does-not-require-sentinel-flag ()
+  "A finished subprocess cannot hang `sops--run' if its sentinel is delayed.
+
+`sops--run' is synchronous and used from save hooks.  It must therefore
+stop waiting when the subprocess exits, instead of relying only on the
+sentinel to set an auxiliary flag.  This test replaces the sentinel with
+a no-op; the old implementation spun forever in that situation."
+  (skip-unless (executable-find "sh"))
+  (let ((sops-executable "sh"))
+    (cl-letf* ((orig-make-process (symbol-function 'make-process))
+               ((symbol-function 'make-process)
+                (lambda (&rest args)
+                  (setq args (plist-put (copy-sequence args)
+                                        :sentinel (lambda (_p _event) nil)))
+                  (apply orig-make-process args))))
+      (let ((result (with-timeout
+                        (2 (error "sops--run hung waiting for sentinel"))
+                      (sops--run '("-c" "printf ok; printf err >&2")))))
+        (should (eq 0 (plist-get result :exit-status)))
+        (should (equal "ok" (plist-get result :stdout)))
+        ;; The stderr pipe is itself a process; this test's make-process
+        ;; wrapper may let Emacs append its process-finished notice there.
+        (should (string-prefix-p "err" (plist-get result :stderr)))))))
+
 (ert-deftest sops-test--run-version-check-disabled ()
   "stderr does not contain sops update-check noise."
   (let ((result (sops--run '("--version"))))
