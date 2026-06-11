@@ -240,6 +240,30 @@ include `/dev/stdin' (or any input source) in their ARGS list."
     (should (eq 0 (plist-get result :exit-status)))
     (should (string-match-p "encrypted" (plist-get result :stdout)))))
 
+(ert-deftest sops-test--run-does-not-require-sentinel-flag ()
+  "A finished subprocess cannot hang `sops--run' if its sentinel is delayed.
+
+`sops--run' is synchronous and used from save hooks.  It must therefore
+stop waiting when the subprocess exits, instead of relying only on the
+sentinel to set an auxiliary flag.  This test replaces the sentinel with
+a no-op; the old implementation spun forever in that situation."
+  (skip-unless (executable-find "sh"))
+  (let ((sops-executable "sh"))
+    (cl-letf* ((orig-make-process (symbol-function 'make-process))
+               ((symbol-function 'make-process)
+                (lambda (&rest args)
+                  (setq args (plist-put (copy-sequence args)
+                                        :sentinel (lambda (_p _event) nil)))
+                  (apply orig-make-process args))))
+      (let ((result (with-timeout
+                        (2 (error "sops--run hung waiting for sentinel"))
+                      (sops--run '("-c" "printf ok; printf err >&2")))))
+        (should (eq 0 (plist-get result :exit-status)))
+        (should (equal "ok" (plist-get result :stdout)))
+        ;; The stderr pipe is itself a process; this test's make-process
+        ;; wrapper may let Emacs append its process-finished notice there.
+        (should (string-prefix-p "err" (plist-get result :stderr)))))))
+
 (ert-deftest sops-test--run-version-check-disabled ()
   "stderr does not contain sops update-check noise."
   (let ((result (sops--run '("--version"))))
@@ -591,6 +615,54 @@ with `status' = `decrypted'."
       ;; its value.
       (should-not (local-variable-p 'apheleia-inhibit)))))
 
+(ert-deftest sops-test--mode-enable-manual-decrypts-buffer ()
+  "Manual `M-x sops-mode' decrypts an unmodified ciphertext buffer.
+
+This is the path used when a SOPS file did not match
+`sops-prefilter-regex' at `find-file' time: the user sees ciphertext,
+then enables `sops-mode' by hand.  Enabling the mode must leave the
+buffer as protected plaintext, not as ciphertext with an encrypt-on-save
+hook bolted on afterwards."
+  (let ((file (make-temp-file "sops-test-manual-")))
+    (unwind-protect
+        (with-temp-buffer
+          (setq buffer-file-name file)
+          (insert "ciphertext\n")
+          (set-buffer-modified-p nil)
+          (cl-letf (((symbol-function 'sops--filestatus) (lambda (_) t))
+                    ((symbol-function 'sops--decrypt-buffer)
+                     (lambda ()
+                       (erase-buffer)
+                       (insert "plaintext\n")
+                       t)))
+            (sops-mode 1))
+          (should sops-mode)
+          (should (sops-state-p sops--state))
+          (should (eq 'decrypted (sops-state-status sops--state)))
+          (should (memq #'sops--write-contents-function write-contents-functions))
+          (should (equal "plaintext\n" (buffer-string))))
+      (when (file-exists-p file) (delete-file file)))))
+
+(ert-deftest sops-test--mode-enable-manual-refuses-modified-buffer ()
+  "Manual `M-x sops-mode' refuses to erase unsaved ciphertext edits."
+  (let ((file (make-temp-file "sops-test-manual-modified-"))
+        (decrypt-called nil))
+    (unwind-protect
+        (with-temp-buffer
+          (setq buffer-file-name file)
+          (insert "ciphertext\n")
+          (set-buffer-modified-p nil)
+          (insert "modified ciphertext buffer\n")
+          (should (buffer-modified-p))
+          (cl-letf (((symbol-function 'sops--filestatus) (lambda (_) t))
+                    ((symbol-function 'sops--decrypt-buffer)
+                     (lambda () (setq decrypt-called t) t)))
+            (should-error (sops-mode 1) :type 'user-error))
+          (should-not decrypt-called)
+          (should-not sops-mode)
+          (should-not sops--state))
+      (when (file-exists-p file) (delete-file file)))))
+
 (ert-deftest sops-test--mode-disable-on-modified-buffer-blocked ()
   "Disabling sops-mode on modified buffer signals user-error."
   (let ((file (sops-test--fixture "secrets.enc.yaml")))
@@ -712,6 +784,44 @@ sops-mode -- `sops--filestatus' returns nil and the hook bails."
         (insert "transient")
         (revert-buffer t t)
         (should (equal orig (buffer-string)))))))
+
+(ert-deftest sops-test--revert-buffer-reinstalls-protections-after-mode-reset ()
+  "Revert keeps protections even if plaintext mode setup clears locals.
+
+Some major-mode setups can clear the `sops-mode' flag and local hook
+state while `sops--decrypt-buffer' re-detects the plaintext mode.  A
+successful `sops--revert-buffer' must leave the decrypted buffer protected
+so the next save cannot write plaintext to disk."
+  (let ((tmp (make-temp-file "sops-test-reprotect-" nil ".enc.yaml")))
+    (unwind-protect
+        (progn
+          (with-temp-file tmp (insert "ciphertext\n"))
+          (with-temp-buffer
+            (setq buffer-file-name tmp)
+            (setq sops-mode t)
+            (setq sops--state (sops-state-create :status 'decrypted))
+            (setq-local revert-buffer-function #'sops--revert-buffer)
+            (add-hook 'write-contents-functions
+                      #'sops--write-contents-function nil t)
+            (cl-letf (((symbol-function 'sops--decrypt-buffer)
+                       (lambda ()
+                         ;; Simulate plaintext major-mode setup wiping the
+                         ;; protection state after a successful decrypt.
+                         (setq sops-mode nil)
+                         (setq sops--state nil)
+                         (setq write-contents-functions nil)
+                         (kill-local-variable 'revert-buffer-function)
+                         (erase-buffer)
+                         (insert "plaintext\n")
+                         t)))
+              (sops--revert-buffer))
+            (should (equal "plaintext\n" (buffer-string)))
+            (should sops-mode)
+            (should (sops-state-p sops--state))
+            (should (memq #'sops--write-contents-function
+                          write-contents-functions))
+            (should (eq #'sops--revert-buffer revert-buffer-function))))
+      (when (file-exists-p tmp) (delete-file tmp)))))
 
 (ert-deftest sops-test--mode-survives-major-mode-change ()
   "Changing major mode preserves sops-mode and re-installs protections.
