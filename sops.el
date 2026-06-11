@@ -538,7 +538,10 @@ Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert-file-contents buffer-file-name)))
-  (sops--decrypt-buffer)
+  (when (sops--decrypt-buffer)
+    (setq sops-mode t)
+    (setq sops--state (sops-state-create :status 'decrypted))
+    (sops--restore-after-major-mode-change))
   (set-buffer-modified-p nil))
 
 ;;;###autoload
@@ -566,6 +569,13 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
         (setq sops-mode nil)
         (user-error "sops-mode: %s is not a sops-encrypted file"
                     (or buffer-file-name "this buffer")))
+      (when (buffer-modified-p)
+        (setq sops-mode nil)
+        (user-error "sops-mode: refusing to decrypt modified buffer; revert first"))
+      (unless (sops--decrypt-buffer)
+        (setq sops-mode nil)
+        (user-error "sops-mode: failed to decrypt %s" buffer-file-name))
+      (setq sops-mode t)
       (setq sops--state (sops-state-create :status 'decrypted)))
     (setq-local make-backup-files nil)
     (setq-local buffer-auto-save-file-name nil)
