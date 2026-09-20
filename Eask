@@ -1,3 +1,5 @@
+;;; -*- lexical-binding: t; -*-
+
 (package "sops"
          "0.2.0"
          "Edit SOPS-encrypted files transparently in Emacs")
