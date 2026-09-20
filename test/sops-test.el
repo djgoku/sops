@@ -1,7 +1,10 @@
 ;;; sops-test.el --- Tests for sops.el v0.2  -*- lexical-binding: t; -*-
 (require 'ert)
 (require 'cl-lib)
-(require 'sops)
+;; Eask may leave an older ignored sops.elc after source edits.  Exercise
+;; the current source rather than silently testing that stale bytecode.
+(let ((load-prefer-newer t))
+  (require 'sops))
 
 ;; Force polling auto-revert in batch tests.  The default file-notify path
 ;; deadlocks in batch (see memory/file_notify_vs_sync_subprocess.md):
