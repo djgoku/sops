@@ -237,7 +237,8 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
                        (with-file-modes #o600
                          (make-temp-file "sops-input-"))))
          (done nil)
-         (proc nil))
+         (proc nil)
+         (stderr-proc nil))
     (unwind-protect
         (let ((process-environment
                (cons "SOPS_DISABLE_VERSION_CHECK=true" process-environment)))
@@ -256,10 +257,15 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
                  :connection-type 'pipe
                  :filter filter
                  :sentinel (lambda (_p _event) (setq done t))))
+          (setq stderr-proc (get-buffer-process stderr-buf))
           (set-process-coding-system proc 'utf-8-unix 'utf-8-unix)
           (while (and (not done) (process-live-p proc))
             (accept-process-output proc 0.1))
           (accept-process-output proc 0 nil t)
+          ;; :stderr BUFFER creates a separate pipe process.  The final
+          ;; stdout read above does not service it when JUST-THIS-ONE is t.
+          (when stderr-proc
+            (while (accept-process-output stderr-proc 0 nil t)))
           (list :exit-status (process-exit-status proc)
                 :stdout (with-current-buffer stdout-buf (buffer-string))
                 :stderr (with-current-buffer stderr-buf (buffer-string))))

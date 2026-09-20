@@ -264,6 +264,26 @@ a no-op; the old implementation spun forever in that situation."
         ;; wrapper may let Emacs append its process-finished notice there.
         (should (string-prefix-p "err" (plist-get result :stderr)))))))
 
+(ert-deftest sops-test--run-drains-stderr-after-child-exits ()
+  "Capture stderr even when only the main process is serviced while live.
+The stderr destination is a separate pipe process.  Force the main
+wait loop to service only its own process, reproducing the ordering
+where the child exits before Emacs reads the stderr pipe."
+  (skip-unless (executable-find "sh"))
+  (let ((sops-executable "sh"))
+    (cl-letf* ((orig-accept-process-output
+                (symbol-function 'accept-process-output))
+               ((symbol-function 'accept-process-output)
+                (lambda (&optional process seconds millis _just-this-one)
+                  (funcall orig-accept-process-output
+                           process seconds millis t))))
+      (let ((result (sops--run
+                     '("-c" "printf stdout; printf stderr-complete >&2"))))
+        (should (eq 0 (plist-get result :exit-status)))
+        (should (equal "stdout" (plist-get result :stdout)))
+        (should (string-prefix-p "stderr-complete"
+                                 (plist-get result :stderr)))))))
+
 (ert-deftest sops-test--run-version-check-disabled ()
   "stderr does not contain sops update-check noise."
   (let ((result (sops--run '("--version"))))
