@@ -922,6 +922,31 @@ the guard chain reaches `sops--decrypt-buffer' before failing."
       (when (get-buffer buf-name) (kill-buffer buf-name))
       (kill-buffer buf))))
 
+(ert-deftest sops-test--manual-mode-retry-after-decrypt-failure-is-writable ()
+  "Manual activation after fixing a decrypt failure restores editability."
+  (let* ((find-file-hook nil)
+         (file (sops-test--fixture "secrets.enc.yaml"))
+         (buf (find-file-noselect file))
+         (buf-name (format "*sops-error: %s*" file)))
+    (when (get-buffer buf-name) (kill-buffer buf-name))
+    (unwind-protect
+        (with-current-buffer buf
+          (let ((process-environment
+                 (cons "SOPS_AGE_KEY_FILE=/tmp/nonexistent-key" process-environment)))
+            (sops--find-file-hook))
+          (should buffer-read-only)
+          (should-not sops-mode)
+          ;; The user's credentials are now fixed; manual activation
+          ;; should decrypt and make the buffer editable like revert does.
+          (sops-mode 1)
+          (should sops-mode)
+          (should (string-match-p "database_password: super-secret-yaml"
+                                  (buffer-string)))
+          (should-not buffer-read-only))
+      (when (get-buffer buf-name) (kill-buffer buf-name))
+      (with-current-buffer buf (set-buffer-modified-p nil))
+      (kill-buffer buf))))
+
 (ert-deftest sops-test--revert-after-decrypt-failure-retries ()
   "After an initial decrypt failure, `revert-buffer' retries decrypt.
 The spec contract is: when the user fixes their auth (e.g. exports the

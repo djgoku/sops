@@ -572,9 +572,13 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
       (when (buffer-modified-p)
         (setq sops-mode nil)
         (user-error "sops-mode: refusing to decrypt modified buffer; revert first"))
-      (unless (sops--decrypt-buffer)
-        (setq sops-mode nil)
-        (user-error "sops-mode: failed to decrypt %s" buffer-file-name))
+      (let ((retrying-decrypt
+             (eq revert-buffer-function #'sops--retry-decrypt-on-revert)))
+        (unless (sops--decrypt-buffer)
+          (setq sops-mode nil)
+          (user-error "sops-mode: failed to decrypt %s" buffer-file-name))
+        (when retrying-decrypt
+          (setq buffer-read-only nil)))
       (setq sops-mode t)
       (setq sops--state (sops-state-create :status 'decrypted)))
     (setq-local make-backup-files nil)
