@@ -543,16 +543,16 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
                    (not (file-remote-p buffer-file-name))
                    (sops--filestatus buffer-file-name))
         (setq sops-mode nil)
-        (user-error "sops-mode: %s is not a sops-encrypted file"
+        (user-error "Sops-mode: %s is not a sops-encrypted file"
                     (or buffer-file-name "this buffer")))
       (when (buffer-modified-p)
         (setq sops-mode nil)
-        (user-error "sops-mode: refusing to decrypt modified buffer; revert first"))
+        (user-error "Sops-mode: refusing to decrypt modified buffer; revert first"))
       (let ((retrying-decrypt
              (eq revert-buffer-function #'sops--retry-decrypt-on-revert)))
         (unless (sops--decrypt-buffer)
           (setq sops-mode nil)
-          (user-error "sops-mode: failed to decrypt %s" buffer-file-name))
+          (user-error "Sops-mode: failed to decrypt %s" buffer-file-name))
         (when retrying-decrypt
           (setq buffer-read-only nil)))
       (setq sops-mode t)
