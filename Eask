@@ -1,5 +1,7 @@
+;;; -*- lexical-binding: t; -*-
+
 (package "sops"
-         "0.2.0"
+         "0.2.1"
          "Edit SOPS-encrypted files transparently in Emacs")
 
 (website-url "https://github.com/djgoku/sops")

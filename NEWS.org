@@ -1,4 +1,18 @@
-* v0.2.0 - Unreleased
+* v0.2.1 - Released
+
+** Fixes
+
+- Avoid hanging after a SOPS subprocess exits before its Emacs process sentinel runs.
+  Drain the separate stderr pipe before reporting the result so errors include
+  complete diagnostics.
+- When =sops-mode= is enabled manually, verify that the visited file is
+  SOPS-encrypted, refuse to decrypt a modified buffer, and decrypt before
+  installing encrypt-on-save protections.
+- After a failed initial decrypt, a successful manual retry makes the buffer
+  writable again.  A successful revert restores =sops-mode= state and its
+  save protections.
+
+* v0.2.0 - Released
 
 ** Breaking changes
 

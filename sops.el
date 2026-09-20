@@ -4,7 +4,7 @@
 
 ;; Author:  Jonathan Carroll Otsuka <pitas.axioms0c@icloud.com>
 ;; Keywords: convenience files tools sops encrypt decrypt
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; Package-Requires: ((emacs "29.1"))
 ;; Homepage: https://github.com/djgoku/sops
 
@@ -237,7 +237,8 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
                        (with-file-modes #o600
                          (make-temp-file "sops-input-"))))
          (done nil)
-         (proc nil))
+         (proc nil)
+         (stderr-proc nil))
     (unwind-protect
         (let ((process-environment
                (cons "SOPS_DISABLE_VERSION_CHECK=true" process-environment)))
@@ -256,9 +257,15 @@ Return plist (:exit-status N :stdout STR :stderr STR)."
                  :connection-type 'pipe
                  :filter filter
                  :sentinel (lambda (_p _event) (setq done t))))
+          (setq stderr-proc (get-buffer-process stderr-buf))
           (set-process-coding-system proc 'utf-8-unix 'utf-8-unix)
-          (while (not done)
+          (while (and (not done) (process-live-p proc))
             (accept-process-output proc 0.1))
+          (accept-process-output proc 0 nil t)
+          ;; :stderr BUFFER creates a separate pipe process.  The final
+          ;; stdout read above does not service it when JUST-THIS-ONE is t.
+          (when stderr-proc
+            (while (accept-process-output stderr-proc 0 nil t)))
           (list :exit-status (process-exit-status proc)
                 :stdout (with-current-buffer stdout-buf (buffer-string))
                 :stderr (with-current-buffer stderr-buf (buffer-string))))
@@ -513,33 +520,6 @@ and the buffer stays read-only with ciphertext."
     (setq sops--state (sops-state-create :status 'decrypted))
     (sops-mode 1)))
 
-(defun sops--revert-buffer (&rest _args)
-  "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
-Widens before erasing so a narrowed buffer doesn't corrupt itself with
-mixed encrypted + plaintext content (parallels the narrowing defense
-in `sops--encrypt-and-write').
-
-Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
-
-  1. After the revert, `verify-visited-file-modtime' must return t
-     so the next keystroke doesn't re-fire the \"FILE has changed on
-     disk\" prompt.
-
-  2. `erase-buffer' triggers Emacs's `lock-file' path which calls
-     `ask-user-about-supersession-threat' if the modtime is stale.
-     In batch mode that errors out (\"Cannot resolve conflict in
-     batch mode\"); interactively it would re-fire the supersession
-     prompt mid-revert.  Updating the recorded modtime first
-     suppresses the check because the buffer now \"agrees\" with disk."
-  (save-restriction
-    (widen)
-    (set-visited-file-modtime)
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (insert-file-contents buffer-file-name)))
-  (sops--decrypt-buffer)
-  (set-buffer-modified-p nil))
-
 ;;;###autoload
 (define-minor-mode sops-mode
   "Edit the current SOPS-encrypted file transparently.
@@ -563,8 +543,19 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
                    (not (file-remote-p buffer-file-name))
                    (sops--filestatus buffer-file-name))
         (setq sops-mode nil)
-        (user-error "sops-mode: %s is not a sops-encrypted file"
+        (user-error "Sops-mode: %s is not a sops-encrypted file"
                     (or buffer-file-name "this buffer")))
+      (when (buffer-modified-p)
+        (setq sops-mode nil)
+        (user-error "Sops-mode: refusing to decrypt modified buffer; revert first"))
+      (let ((retrying-decrypt
+             (eq revert-buffer-function #'sops--retry-decrypt-on-revert)))
+        (unless (sops--decrypt-buffer)
+          (setq sops-mode nil)
+          (user-error "Sops-mode: failed to decrypt %s" buffer-file-name))
+        (when retrying-decrypt
+          (setq buffer-read-only nil)))
+      (setq sops-mode t)
       (setq sops--state (sops-state-create :status 'decrypted)))
     (setq-local make-backup-files nil)
     (setq-local buffer-auto-save-file-name nil)
@@ -608,6 +599,36 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
     (kill-local-variable 'apheleia-inhibit)
     (remove-hook 'write-contents-functions #'sops--write-contents-function t)
     (setq sops--state nil))))
+
+(defun sops--revert-buffer (&rest _args)
+  "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
+Widens before erasing so a narrowed buffer doesn't corrupt itself with
+mixed encrypted + plaintext content (parallels the narrowing defense
+in `sops--encrypt-and-write').
+
+Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
+
+  1. After the revert, `verify-visited-file-modtime' must return t
+     so the next keystroke doesn't re-fire the \"FILE has changed on
+     disk\" prompt.
+
+  2. `erase-buffer' triggers Emacs's `lock-file' path which calls
+     `ask-user-about-supersession-threat' if the modtime is stale.
+     In batch mode that errors out (\"Cannot resolve conflict in
+     batch mode\"); interactively it would re-fire the supersession
+     prompt mid-revert.  Updating the recorded modtime first
+     suppresses the check because the buffer now \"agrees\" with disk."
+  (save-restriction
+    (widen)
+    (set-visited-file-modtime)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (insert-file-contents buffer-file-name)))
+  (when (sops--decrypt-buffer)
+    (setq sops-mode t)
+    (setq sops--state (sops-state-create :status 'decrypted))
+    (sops--restore-after-major-mode-change))
+  (set-buffer-modified-p nil))
 
 ;; Survive `kill-all-local-variables' (which fires whenever the user changes
 ;; major mode).  Without this, our protections evaporate and a subsequent
