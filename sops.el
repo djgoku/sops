@@ -520,36 +520,6 @@ and the buffer stays read-only with ciphertext."
     (setq sops--state (sops-state-create :status 'decrypted))
     (sops-mode 1)))
 
-(defun sops--revert-buffer (&rest _args)
-  "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
-Widens before erasing so a narrowed buffer doesn't corrupt itself with
-mixed encrypted + plaintext content (parallels the narrowing defense
-in `sops--encrypt-and-write').
-
-Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
-
-  1. After the revert, `verify-visited-file-modtime' must return t
-     so the next keystroke doesn't re-fire the \"FILE has changed on
-     disk\" prompt.
-
-  2. `erase-buffer' triggers Emacs's `lock-file' path which calls
-     `ask-user-about-supersession-threat' if the modtime is stale.
-     In batch mode that errors out (\"Cannot resolve conflict in
-     batch mode\"); interactively it would re-fire the supersession
-     prompt mid-revert.  Updating the recorded modtime first
-     suppresses the check because the buffer now \"agrees\" with disk."
-  (save-restriction
-    (widen)
-    (set-visited-file-modtime)
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (insert-file-contents buffer-file-name)))
-  (when (sops--decrypt-buffer)
-    (setq sops-mode t)
-    (setq sops--state (sops-state-create :status 'decrypted))
-    (sops--restore-after-major-mode-change))
-  (set-buffer-modified-p nil))
-
 ;;;###autoload
 (define-minor-mode sops-mode
   "Edit the current SOPS-encrypted file transparently.
@@ -629,6 +599,36 @@ Plaintext never reaches disk (backups and auto-save are suppressed)."
     (kill-local-variable 'apheleia-inhibit)
     (remove-hook 'write-contents-functions #'sops--write-contents-function t)
     (setq sops--state nil))))
+
+(defun sops--revert-buffer (&rest _args)
+  "Revert function for sops-mode buffers: re-read encrypted file and decrypt.
+Widens before erasing so a narrowed buffer doesn't corrupt itself with
+mixed encrypted + plaintext content (parallels the narrowing defense
+in `sops--encrypt-and-write').
+
+Refreshes `visited-file-modtime' BEFORE `erase-buffer'.  Two reasons:
+
+  1. After the revert, `verify-visited-file-modtime' must return t
+     so the next keystroke doesn't re-fire the \"FILE has changed on
+     disk\" prompt.
+
+  2. `erase-buffer' triggers Emacs's `lock-file' path which calls
+     `ask-user-about-supersession-threat' if the modtime is stale.
+     In batch mode that errors out (\"Cannot resolve conflict in
+     batch mode\"); interactively it would re-fire the supersession
+     prompt mid-revert.  Updating the recorded modtime first
+     suppresses the check because the buffer now \"agrees\" with disk."
+  (save-restriction
+    (widen)
+    (set-visited-file-modtime)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (insert-file-contents buffer-file-name)))
+  (when (sops--decrypt-buffer)
+    (setq sops-mode t)
+    (setq sops--state (sops-state-create :status 'decrypted))
+    (sops--restore-after-major-mode-change))
+  (set-buffer-modified-p nil))
 
 ;; Survive `kill-all-local-variables' (which fires whenever the user changes
 ;; major mode).  Without this, our protections evaporate and a subsequent
